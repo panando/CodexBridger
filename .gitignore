@@ -1,0 +1,42 @@
+# SwiftPM build directories.
+#
+# The wildcard matters. A plain `.build/` matches only a directory named exactly
+# `.build`, so the alternate scratch paths this repository's scripts use —
+# `.build-uni/` and `.build-universal/` — slipped through and would have been
+# committed. Together they are over 500 MB of compiler output.
+.build*/
+
+# Packaging output: CodexBridger.app, the .dmg and the .zip.
+build/
+
+# Xcode state, for anyone who opens the package in Xcode rather than the CLI.
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+DerivedData/
+.swiftpm/
+
+# Design notes, field reference, test report, generated samples and screenshots.
+# These stay local: they are working material for whoever develops the app, not part of
+# what a user needs to build or run it. Nothing the README links to lives here.
+docs/
+
+# Codex creates a scratch directory inside any CODEX_HOME it reads.
+tmp/
+
+# Credentials. This app handles API keys, so a stray .env or key file in the
+# working tree is a realistic accident rather than a hypothetical one.
+.env
+.env.*
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+*.p12
+*.mobileprovision
+
+# Editor and OS files.
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

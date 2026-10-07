@@ -46,6 +46,27 @@ public final class AppModel: ObservableObject {
     @Published public var pendingActivation: PendingActivation?
     @Published public var templateSourceDescription: String = "内置模板（已用 ChatGPT 校验）"
 
+    /// What happened to the provider's model parameter file during the last save.
+    ///
+    /// Kept apart from `editorPhase` on purpose: that channel is a transient confirmation that
+    /// clears itself, and a failure here must stay on screen until the situation changes.
+    public struct CatalogSyncNotice: Equatable {
+        public enum Kind: Equatable { case success, warning, failure }
+
+        public var kind: Kind
+        public var message: String
+
+        public init(kind: Kind, message: String) {
+            self.kind = kind
+            self.message = message
+        }
+    }
+
+    @Published public var catalogSyncNotice: CatalogSyncNotice?
+
+    /// Bumped on every publish, so a pending auto-dismiss cannot clear a newer notice.
+    private var catalogNoticeToken = 0
+
     public let paths: CodexPaths
     private let store: ConfigurationStore
 
@@ -209,6 +230,32 @@ public final class AppModel: ObservableObject {
         }
     }
     @Published public var isShowingPresetPicker = false
+
+    /// An import the user has started, and where its models should go.
+    ///
+    /// Driving the sheet from the model (rather than from local view state) keeps a single sheet
+    /// for both entry points: the button beside the model list, and the "new provider" flow.
+    public struct CatalogImportRequest: Identifiable, Equatable {
+        public enum Target: Equatable {
+            /// Add the models to the provider currently open in the form.
+            case draftProvider
+            /// Create a provider whose model list comes from the file.
+            case newProvider
+        }
+
+        public let id: UUID
+        public var target: Target
+        /// A file to read on open. Only the screenshot trigger sets this.
+        public var initialFile: URL?
+
+        public init(target: Target, initialFile: URL? = nil) {
+            self.id = UUID()
+            self.target = target
+            self.initialFile = initialFile
+        }
+    }
+
+    @Published public var catalogImportRequest: CatalogImportRequest?
     @Published public var expandedModelIDs: Set<UUID> = []
     /// Model currently open in the parameter sheet.
     @Published public var editingModelID: UUID?
@@ -254,6 +301,9 @@ public final class AppModel: ObservableObject {
         }
 
         let originalID = current.original.id
+        // What was stored before this save, to tell a model edit (which the model parameter file
+        // carries) from a name/address/credential edit (which only activation can publish).
+        let previous = configuration.provider(id: originalID)
         if let index = configuration.providers.firstIndex(where: { $0.id == originalID }) {
             configuration.providers[index] = committed
         } else {
@@ -282,7 +332,94 @@ public final class AppModel: ObservableObject {
         publishTransient(.saved("已保存 " + committed.name))
         refreshCodexState()
         resolveTemplateSource()
+        syncCatalogAfterSave(committed: committed, previous: previous)
         return true
+    }
+
+    // MARK: - Model parameter file
+
+    /// Brings the model parameter file back in step after a save.
+    ///
+    /// Only the provider ChatGPT is actually using gets a file written: a catalog for a provider
+    /// nobody activated would be a file nothing references. What a catalog *cannot* carry — a
+    /// renamed id, a new address or credential — is reported instead of silently dropped, because
+    /// the user has no other way to learn that Save did not cover it.
+    private func syncCatalogAfterSave(
+        committed: ProviderConfiguration,
+        previous: ProviderConfiguration?
+    ) {
+        publishCatalogSync(nil)
+        guard configuration.activeProviderID == committed.id else { return }
+
+        if let previous, previous.id != committed.id {
+            publishCatalogSync(CatalogSyncNotice(
+                kind: .warning,
+                message: "提供商 ID 改了，config.toml 还指着旧 ID。点「更新配置」重写一次。"
+            ))
+            return
+        }
+
+        let settingsChanged = previous.map { !$0.hasSamePublishedSettings(as: committed) } ?? false
+        if settingsChanged {
+            publishCatalogSync(CatalogSyncNotice(
+                kind: .warning,
+                message: "地址或密钥改了。点「更新配置」才会写进 ChatGPT。"
+            ))
+        }
+        regenerateCatalog(for: committed, keepingExistingNotice: settingsChanged)
+    }
+
+    /// Rewrites the provider's catalog, off the main thread.
+    ///
+    /// The template comes from the ChatGPT CLI when it is installed, which means launching a
+    /// subprocess, so the resolver is built inside the task rather than before it.
+    private func regenerateCatalog(
+        for provider: ProviderConfiguration,
+        keepingExistingNotice: Bool
+    ) {
+        let slug = configuration.catalogTemplateSlug
+        let appModel = self
+        Task.detached(priority: .utility) {
+            let writer = ModelCatalogWriter(
+                paths: appModel.paths,
+                templateSource: CatalogTemplateResolver(preferredSlug: slug)
+            )
+            do {
+                let outcome = try writer.writeIfChanged(
+                    provider: provider,
+                    preferredTemplateSlug: slug
+                )
+                await MainActor.run {
+                    guard outcome.action == .written, !keepingExistingNotice else { return }
+                    appModel.publishCatalogSync(CatalogSyncNotice(
+                        kind: .success,
+                        message: "模型参数文件已同步"
+                    ))
+                }
+            } catch {
+                await MainActor.run {
+                    appModel.publishCatalogSync(CatalogSyncNotice(
+                        kind: .failure,
+                        message: "模型参数文件没更新：" + error.localizedDescription
+                            + "。config.json 已保存，ChatGPT 仍在使用上一次的参数文件。"
+                    ))
+                }
+            }
+        }
+    }
+
+    /// Publishes (or clears) the catalog notice. A success clears itself; anything that needs the
+    /// user's attention stays until the next save replaces it.
+    private func publishCatalogSync(_ notice: CatalogSyncNotice?) {
+        catalogSyncNotice = notice
+        catalogNoticeToken += 1
+        let token = catalogNoticeToken
+        guard let notice, notice.kind == .success else { return }
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(Self.successNoticeSeconds * 1_000_000_000))
+            guard let self, token == self.catalogNoticeToken else { return }
+            self.catalogSyncNotice = nil
+        }
     }
 
     /// Throws away unsaved edits.
@@ -372,6 +509,75 @@ public final class AppModel: ObservableObject {
         draft = ProviderDraft(provider: provider, existingIDs: otherProviderIDs(excluding: id), isNew: true)
         editorPhase = .editing
         isShowingPresetPicker = false
+    }
+
+    // MARK: - Importing models from a catalog file
+
+    /// Opens the import sheet. The picker is closed if it was the entry point.
+    public func beginCatalogImport(
+        _ target: CatalogImportRequest.Target,
+        initialFile: URL? = nil
+    ) {
+        isShowingPresetPicker = false
+        catalogImportRequest = CatalogImportRequest(target: target, initialFile: initialFile)
+    }
+
+    /// Applies a confirmed import.
+    ///
+    /// Only the draft is touched: nothing reaches the disk until the user saves, which is the same
+    /// contract every other edit in the form follows.
+    @discardableResult
+    public func applyCatalogImport(
+        _ outcome: ModelCatalogImporter.ImportOutcome,
+        slugs: Set<String>
+    ) -> ModelCatalogImporter.MergeResult? {
+        let selected = outcome.models.map(\.model).filter { slugs.contains($0.slug) }
+        guard !selected.isEmpty else { return nil }
+        guard let target = catalogImportRequest?.target else { return nil }
+        catalogImportRequest = nil
+
+        let merge: ModelCatalogImporter.MergeResult
+        switch target {
+        case .draftProvider:
+            guard var current = draft else { return nil }
+            merge = ModelCatalogImporter.merge(imported: selected, into: current.provider.models)
+            current.provider.models = merge.models
+            draft = current
+        case .newProvider:
+            let id = uniqueProviderID(base: "provider")
+            var provider = ProviderConfiguration(
+                id: id,
+                name: "新提供商",
+                baseURL: "",
+                credentialMode: .bearerToken
+            )
+            merge = ModelCatalogImporter.merge(imported: selected, into: [])
+            provider.models = merge.models
+            configuration.providers.append(provider)
+            selectedProviderID = id
+            draft = ProviderDraft(
+                provider: provider,
+                existingIDs: otherProviderIDs(excluding: id),
+                isNew: true
+            )
+        }
+
+        editorPhase = .editing
+        publishTransient(.saved(importSummary(merge)))
+        return merge
+    }
+
+    /// A one-line account of what the import did, including what it replaced.
+    private func importSummary(_ merge: ModelCatalogImporter.MergeResult) -> String {
+        var parts = ["已导入 " + String(merge.added.count) + " 个模型"]
+        if !merge.overwritten.isEmpty {
+            parts.append("覆盖 " + String(merge.overwritten.count) + " 个同名模型："
+                         + merge.overwritten.joined(separator: "、"))
+        }
+        if merge.added.isEmpty && merge.overwritten.isEmpty {
+            return "没有新增模型"
+        }
+        return parts.joined(separator: "，")
     }
 
     /// Creates an empty provider for a service that has no preset.

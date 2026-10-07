@@ -121,7 +121,7 @@ Requires macOS 14 or later and the Xcode command line tools. **Zero external dep
 To hand the app to someone else, build the version that runs on both Apple silicon and Intel (**an arm64-only build does nothing at all when opened on an Intel Mac**):
 
 ```bash
-./scripts/build-app.sh release universal dmg   # produces build/CodexBridger-1.0.0.dmg
+./scripts/build-app.sh release universal dmg   # produces build/CodexBridger-<VERSION>.dmg
 ```
 
 The version has a single source: the `VERSION` file at the repository root. Change it and the build stamps it into the app's About pane. Swapping `dmg` for `zip` produces an archive instead — that needs no disk-arbitration access, so it works in CI.

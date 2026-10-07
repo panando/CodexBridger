@@ -307,7 +307,9 @@ final class ComponentRenderTests: XCTestCase {
     }
 
     func testWritePresetPickerArtefact() throws {
-        let view = PresetPickerSheet(onPick: { _ in }, onPickBlank: {}, onCancel: {})
+        let view = PresetPickerSheet(
+            onPick: { _ in }, onPickBlank: {}, onPickCatalogFile: {}, onCancel: {}
+        )
         for appearance in [NSAppearance.Name.aqua, .darkAqua] {
             let size = try Snapshot.writeArtifact(
                 view, named: "preset-picker", width: 560, appearance: appearance
@@ -325,6 +327,28 @@ final class ComponentRenderTests: XCTestCase {
         .background(Color.token(Palette.windowBackground))
         for appearance in [NSAppearance.Name.aqua, .darkAqua] {
             try Snapshot.writeArtifact(view, named: "model-editor", width: 560, appearance: appearance)
+        }
+    }
+
+    /// The import sheet, in the state it opens in: no file chosen yet, nothing to select.
+    func testWriteModelCatalogImportArtefact() throws {
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("import-sheet-" + UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let view = ModelCatalogImportSheet(
+            title: "从模型参数文件导入模型",
+            catalogsDirectory: directory,
+            existingSlugs: ["demo-large"],
+            onConfirm: { _ in },
+            onCancel: {}
+        )
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            let size = try Snapshot.writeArtifact(
+                view, named: "model-catalog-import", width: 620, appearance: appearance
+            )
+            XCTAssertGreaterThan(size.height, 500)
         }
     }
 

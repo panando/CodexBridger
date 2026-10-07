@@ -149,7 +149,14 @@ public struct ProviderFormBody: View {
 
     private var mappingSection: some View {
         SectionCard(model.t("模型配置")) {
-            ActionLink(model.t("添加模型"), systemImage: "plus") { model.addModelToDraft() }
+            // Adding one model at a time is the common case; importing is the escape hatch for a
+            // user who already has a catalog listing the models they want.
+            HStack(spacing: Spacing.md) {
+                ActionLink(model.t("从文件导入"), systemImage: "square.and.arrow.down") {
+                    model.beginCatalogImport(.draftProvider)
+                }
+                ActionLink(model.t("添加模型"), systemImage: "plus") { model.addModelToDraft() }
+            }
         } content: {
 
             if provider.models.isEmpty {

@@ -234,6 +234,29 @@ public struct ProviderConfiguration: Codable, Identifiable, Equatable, Sendable 
     }
 }
 
+extension ProviderConfiguration {
+    /// Everything that reaches `config.toml` or `auth.json`, compared field by field.
+    ///
+    /// The model list and the provider id are deliberately excluded: the models are published in
+    /// the model parameter file, and the id is compared separately because a rename changes the
+    /// file the id names. `category` never leaves this app.
+    ///
+    /// Saving a provider only rewrites the model parameter file, so this is what tells a save
+    /// whether the change is something a catalog write can carry or something that needs a full
+    /// re-activation.
+    public func hasSamePublishedSettings(as other: ProviderConfiguration) -> Bool {
+        var lhs = self
+        var rhs = other
+        lhs.id = ""
+        rhs.id = ""
+        lhs.category = ""
+        rhs.category = ""
+        lhs.models = []
+        rhs.models = []
+        return lhs == rhs
+    }
+}
+
 /// The whole persisted state of the app, stored in ~/.codex/codexbridger/config.json.
 public struct CodexBridgerConfiguration: Codable, Equatable, Sendable {
     public var schemaVersion: Int

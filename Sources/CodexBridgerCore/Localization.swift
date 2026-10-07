@@ -92,6 +92,14 @@ public enum Localization {
         "保存": "Save",
         "保存中…": "Saving…",
         "启用": "Activate",
+        "更新配置": "Update configuration",
+        "把这份配置写进 ChatGPT": "Write this configuration into ChatGPT",
+        "需要先保存": "Save first",
+        "需要至少一个模型": "At least one model is required",
+        "先解决表单里的错误": "Fix the errors in the form first",
+        "ChatGPT 正在用它；点这里把当前设置重新写进 config.toml 和模型参数文件":
+            "ChatGPT is using it; this rewrites config.toml and the model catalogue from the "
+            + "current settings",
 
         // Sections
         "提供商信息": "Provider",
@@ -99,6 +107,8 @@ public enum Localization {
         "模型配置": "Models",
         "模型推理": "Model reasoning",
         "添加模型": "Add model",
+        "从文件导入": "Import from file",
+        "从模型参数文件导入": "Import from a model catalogue file",
 
         // Fields
         "名称": "Name",

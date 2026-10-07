@@ -121,7 +121,7 @@ open build/CodexBridger.app     # 打开软件
 对外分发请编译成同时支持 Apple 芯片和 Intel 的版本（**只有 arm64 的包在 Intel Mac 上双击没有任何反应**）：
 
 ```bash
-./scripts/build-app.sh release universal dmg   # 生成 build/CodexBridger-1.0.0.dmg
+./scripts/build-app.sh release universal dmg   # 生成 build/CodexBridger-<VERSION>.dmg
 ```
 
 版本号只有一个来源：仓库根目录的 `VERSION` 文件，改它即可——构建时会写进 App 的「关于」页面。把 `dmg` 换成 `zip` 则产出压缩包（不需要磁盘仲裁权限，适合在 CI 里打包）。

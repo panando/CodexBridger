@@ -36,8 +36,18 @@ public struct ProviderConfigView: View {
         model.configuration.activeProviderID == draft.original.id
     }
 
-    private var canActivate: Bool {
-        !provider.models.isEmpty && !draft.isDirty && draft.errors.isEmpty && !isAlreadyActive
+    /// Whether the primary action can be used, and what it should say.
+    ///
+    /// The rule lives in `ActivationAction` so it can be tested directly. It used to disable the
+    /// button for the provider ChatGPT was already using, which left that provider's settings
+    /// with no way to reach the files Codex reads.
+    private var activationAvailability: ActivationAction.Availability {
+        ActivationAction.availability(
+            hasModels: !provider.models.isEmpty,
+            isDirty: draft.isDirty,
+            hasErrors: !draft.errors.isEmpty,
+            isAlreadyActive: isAlreadyActive
+        )
     }
 
     /// The primary button only earns its emphasis while it can be used.
@@ -56,15 +66,6 @@ public struct ProviderConfigView: View {
                 content.buttonStyle(.bordered)
             }
         }
-    }
-
-    /// Says why the button is unavailable, instead of one message for every reason.
-    private var activateHelpText: String {
-        if isAlreadyActive { return "ChatGPT 已经在用这个提供商了" }
-        if provider.models.isEmpty { return "需要至少一个模型" }
-        if !draft.errors.isEmpty { return "先解决表单里的错误" }
-        if draft.isDirty { return "需要先保存" }
-        return "把这份配置写进 ChatGPT"
     }
 
     public var body: some View {
@@ -93,6 +94,14 @@ public struct ProviderConfigView: View {
         }
     }
 
+    private func bannerKind(_ kind: AppModel.CatalogSyncNotice.Kind) -> StatusBanner.Kind {
+        switch kind {
+        case .success: return .success
+        case .warning: return .warning
+        case .failure: return .failure
+        }
+    }
+
     // MARK: - Action bar
 
     private var actionBar: some View {
@@ -107,6 +116,11 @@ public struct ProviderConfigView: View {
                 } else if model.editorPhase.isSuccess {
                     StatusBanner(kind: .success, message: model.editorPhase.message)
                 }
+                // The model parameter file has its own notice: a failure there must stay on
+                // screen, and it is not the same news as "the form was saved".
+                if let notice = model.catalogSyncNotice {
+                    StatusBanner(kind: bannerKind(notice.kind), message: notice.message)
+                }
                 Spacer(minLength: Spacing.md)
                 Button(draft.isNew ? model.t("取消") : model.t("重置")) { model.resetDraft() }
                     .buttonStyle(.bordered)
@@ -117,7 +131,7 @@ public struct ProviderConfigView: View {
                     .controlSize(.large)
                     .modifier(ProminentWhileAvailable(isAvailable: canSave))
                     .disabled(!canSave)
-                Button(model.t("启用")) {
+                Button(model.t(activationAvailability.title)) {
                     model.requestActivation(
                         providerID: draft.original.id,
                         modelID: provider.models.first?.id ?? UUID()
@@ -125,8 +139,8 @@ public struct ProviderConfigView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
-                .disabled(!canActivate)
-                .help(activateHelpText)
+                .disabled(!activationAvailability.isEnabled)
+                .help(model.t(activationAvailability.help))
             }
             .padding(.horizontal, Spacing.xxl)
             .padding(.vertical, Metrics.actionBarVerticalPadding)

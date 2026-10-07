@@ -17,7 +17,9 @@ final class PresetRowLayoutTests: XCTestCase {
 
     func testPresetRowHeightMatchesTheCustomRowHeight() throws {
         let preset = try XCTUnwrap(ProviderPreset.builtIn.first)
-        let picker = PresetPickerSheet(onPick: { _ in }, onPickBlank: {}, onCancel: {})
+        let picker = PresetPickerSheet(
+            onPick: { _ in }, onPickBlank: {}, onPickCatalogFile: {}, onCancel: {}
+        )
 
         let wholeSheet = try XCTUnwrap(Snapshot.size(picker, width: Metrics.sheetWidth))
 

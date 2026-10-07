@@ -75,15 +75,20 @@ public struct CodexConfigWriter: @unchecked Sendable {
     ) throws -> ActivationResult {
         try validate(provider: provider, model: model)
 
-        let generator = ModelCatalogGenerator(templateSource: templateSource)
-        let catalog = try generator.makeCatalog(
+        // The catalog comes from the same writer the save path uses, so a catalog written by
+        // activating and one written by saving a provider can never drift apart.
+        let catalogWriter = ModelCatalogWriter(
+            paths: paths,
+            templateSource: templateSource,
+            fileManager: fileManager
+        )
+        let renderedCatalog = try catalogWriter.render(
             provider: provider,
             preferredTemplateSlug: configuration.catalogTemplateSlug
         )
-        let catalogJSON = try ModelCatalogGenerator.serialize(catalog)
-        try validateCatalogSchema(catalogJSON)
+        let catalogJSON = renderedCatalog.json
 
-        let catalogURL = paths.catalog(for: provider.id)
+        let catalogURL = renderedCatalog.url
         let configURL = paths.configTOML
         let authURL = paths.authJSON
 
@@ -114,7 +119,7 @@ public struct CodexConfigWriter: @unchecked Sendable {
         }
 
         // 2. Catalog first: config.toml will point at it.
-        try AtomicFile.write(catalogJSON, to: catalogURL, fileManager: fileManager)
+        try catalogWriter.write(renderedCatalog)
 
         // 3. config.toml
         var document = TOMLDocument(text: existingConfigText())
@@ -181,27 +186,6 @@ public struct CodexConfigWriter: @unchecked Sendable {
         }
         if provider.credentialMode == .command && provider.commandAuth.command.isEmpty {
             throw WriterError.emptyCommandAuth(provider.id)
-        }
-    }
-
-    /// Guards the two invariants Codex enforces on a catalog before the file is
-    /// allowed near ~/.codex.
-    private func validateCatalogSchema(_ json: String) throws {
-        guard let data = json.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let models = object["models"] as? [[String: Any]] else {
-            throw ModelCatalogGenerator.GenerationError.noUsableTemplate
-        }
-        guard !models.isEmpty else {
-            throw ModelCatalogGenerator.GenerationError.noUsableTemplate
-        }
-        for entry in models {
-            let hasInstructions = (entry["base_instructions"] as? String)?.isEmpty == false
-            let messages = entry["model_messages"] as? [String: Any]
-            let hasTemplate = (messages?["instructions_template"] as? String)?.isEmpty == false
-            guard hasInstructions || hasTemplate else {
-                throw ModelCatalogGenerator.GenerationError.templateMissingInstructions
-            }
         }
     }
 

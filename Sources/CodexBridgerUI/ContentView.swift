@@ -85,6 +85,25 @@ public struct ContentView: View {
         // The initial draft is established by AppModel.load(), before the first render, so that
         // the first frame matches every frame after it. Only later switches need handling here.
         .task {
+            // Opens the import sheet on launch when asked for from the environment.
+            //
+            // Same reason as the Settings trigger below: Accessibility permission is not granted,
+            // so a script cannot click "从文件导入" and the sheet would be uninspectable. The value
+            // is the file to preload, or 1 to open the sheet empty. It does nothing on a normal
+            // launch.
+            let requested = ProcessInfo.processInfo.environment["CODEXBRIDGER_OPEN_CATALOG_IMPORT"]
+            if let requested, !requested.isEmpty {
+                let file = requested == "1" ? nil : URL(fileURLWithPath: requested)
+                // Presented a beat after launch: a sheet asked for while the window is still being
+                // installed is dropped silently, so the trigger waits for the window to settle.
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    model.beginCatalogImport(
+                        model.draft == nil ? .newProvider : .draftProvider,
+                        initialFile: file
+                    )
+                }
+            }
             // Opens the Settings window on launch when asked for from the environment, the same
             // way CODEXBRIDGER_APPEARANCE forces an appearance. There is no way to click the gear
             // from a script — Accessibility permission is not granted — so this is how the window
@@ -98,13 +117,32 @@ public struct ContentView: View {
             guard let newValue else { model.draft = nil; return }
             model.beginEditing(providerID: newValue)
         }
+        // Importing models from an existing catalog file. One sheet serves both entry points:
+        // adding to the provider being edited, and starting a new provider from a file.
+        .sheet(item: $model.catalogImportRequest) { request in
+            let target = request.target
+            ModelCatalogImportSheet(
+                title: target == .newProvider
+                    ? "从模型参数文件新建提供商"
+                    : "从模型参数文件导入模型",
+                catalogsDirectory: model.paths.modelCatalogsDirectory,
+                existingSlugs: existingSlugs(for: target),
+                initialFile: request.initialFile,
+                onConfirm: { confirmation in
+                    model.applyCatalogImport(confirmation.outcome, slugs: confirmation.slugs)
+                },
+                onCancel: { model.catalogImportRequest = nil }
+            )
+        }
         .sheet(isPresented: $model.isShowingPresetPicker) {
             PresetPickerSheet(
                 onPick: { preset in model.createProvider(from: preset) },
                 onPickBlank: { model.createBlankProvider() },
+                onPickCatalogFile: { model.beginCatalogImport(.newProvider) },
                 onCancel: { model.isShowingPresetPicker = false }
             )
         }
+
         // Confirmation when activating would replace a provider this app did not write.
         //
         // This was the whole reason activation appeared to do nothing: `requestActivation` set
@@ -136,6 +174,16 @@ public struct ContentView: View {
         .help(model.t("设置"))
         .accessibilityLabel(model.t("设置"))
         .frame(width: 28, height: 24)
+    }
+
+    /// Which slugs the target already has, so the sheet can mark them as "will be overwritten".
+    private func existingSlugs(for target: AppModel.CatalogImportRequest.Target) -> Set<String> {
+        switch target {
+        case .draftProvider:
+            return Set(model.draft?.provider.models.map(\.slug) ?? [])
+        case .newProvider:
+            return []
+        }
     }
 
     private var pendingActivationBinding: Binding<Bool> {

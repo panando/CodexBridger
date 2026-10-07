@@ -9,15 +9,18 @@ import CodexBridgerCore
 public struct PresetPickerSheet: View {
     private let onPick: (ProviderPreset) -> Void
     private let onPickBlank: () -> Void
+    private let onPickCatalogFile: () -> Void
     private let onCancel: () -> Void
 
     public init(
         onPick: @escaping (ProviderPreset) -> Void,
         onPickBlank: @escaping () -> Void,
+        onPickCatalogFile: @escaping () -> Void,
         onCancel: @escaping () -> Void
     ) {
         self.onPick = onPick
         self.onPickBlank = onPickBlank
+        self.onPickCatalogFile = onPickCatalogFile
         self.onCancel = onCancel
     }
 
@@ -57,6 +60,19 @@ public struct PresetPickerSheet: View {
                             iconTint: Palette.textSecondary,
                             title: "自定义",
                             subtitle: nil
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .background(rowBorder)
+
+                    // The catalog holds models but no address or credential, so this creates a
+                    // provider with the model list already filled in and the rest left to the user.
+                    Button(action: onPickCatalogFile) {
+                        rowShell(
+                            icon: "square.and.arrow.down",
+                            iconTint: Palette.accentText,
+                            title: "从模型参数文件导入",
+                            subtitle: "模型来自已有文件，地址和密钥仍需自己填"
                         )
                     }
                     .buttonStyle(.plain)

@@ -29,24 +29,31 @@ public struct ProviderConfigView: View {
         draft.isDirty && draft.canSave && model.editorPhase != .saving
     }
 
-    /// Once this provider and model are what Codex already points at, the button stays disabled
-    /// and says so, rather than offering a no-op that rewrites the same files and looks like
-    /// nothing happened.
+    /// Whether this provider is the one ChatGPT is using.
     private var isAlreadyActive: Bool {
         model.configuration.activeProviderID == draft.original.id
     }
 
+    /// Whether the files already hold exactly this provider.
+    ///
+    /// Compared against what the last activation recorded, with the model list and the id
+    /// included (both reach the files) and `category` ignored (it never leaves this app). Saving
+    /// a change makes this false again, which is what brings the button back.
+    private var isAlreadyPublished: Bool {
+        guard let published = model.configuration.publishedProvider else { return false }
+        return published.hasSameAppliedState(as: draft.provider)
+    }
+
     /// Whether the primary action can be used, and what it should say.
     ///
-    /// The rule lives in `ActivationAction` so it can be tested directly. It used to disable the
-    /// button for the provider ChatGPT was already using, which left that provider's settings
-    /// with no way to reach the files Codex reads.
+    /// The rule lives in `ActivationAction` so it can be tested directly; see the contract there.
     private var activationAvailability: ActivationAction.Availability {
         ActivationAction.availability(
             hasModels: !provider.models.isEmpty,
             isDirty: draft.isDirty,
             hasErrors: !draft.errors.isEmpty,
-            isAlreadyActive: isAlreadyActive
+            isAlreadyActive: isAlreadyActive,
+            isAlreadyPublished: isAlreadyPublished
         )
     }
 
@@ -94,14 +101,6 @@ public struct ProviderConfigView: View {
         }
     }
 
-    private func bannerKind(_ kind: AppModel.CatalogSyncNotice.Kind) -> StatusBanner.Kind {
-        switch kind {
-        case .success: return .success
-        case .warning: return .warning
-        case .failure: return .failure
-        }
-    }
-
     // MARK: - Action bar
 
     private var actionBar: some View {
@@ -116,10 +115,10 @@ public struct ProviderConfigView: View {
                 } else if model.editorPhase.isSuccess {
                     StatusBanner(kind: .success, message: model.editorPhase.message)
                 }
-                // The model parameter file has its own notice: a failure there must stay on
-                // screen, and it is not the same news as "the form was saved".
-                if let notice = model.catalogSyncNotice {
-                    StatusBanner(kind: bannerKind(notice.kind), message: notice.message)
+                // The activation result. Without this the button rewrote config.toml and the
+                // model parameter file and said nothing, which reads as a dead button.
+                if !model.status.isEmpty, model.status.kind != .idle {
+                    StatusBanner(kind: model.status.bannerKind, message: model.status.message)
                 }
                 Spacer(minLength: Spacing.md)
                 Button(draft.isNew ? model.t("取消") : model.t("重置")) { model.resetDraft() }

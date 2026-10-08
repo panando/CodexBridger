@@ -143,6 +143,9 @@ final class TOMLDocumentTests: XCTestCase {
         XCTAssertEqual(TOMLValueWriter.keyString("X-Example-Header"), "X-Example-Header")
         XCTAssertEqual(TOMLValueWriter.keyString("has space"), "\"has space\"")
         XCTAssertEqual(TOMLValueWriter.bool(true), "true")
+        // Numbers are covered here because the global settings page no longer has a number row,
+        // so nothing on that screen can produce this shape any more.
+        XCTAssertEqual(TOMLValueWriter.int(200_000), "200000")
         XCTAssertEqual(TOMLValueWriter.stringArray(["a", "b"]), "[\"a\", \"b\"]")
         XCTAssertEqual(
             TOMLValueWriter.inlineTable([("z", "1"), ("a", "2")]),

@@ -15,6 +15,9 @@ public struct FormRow<Control: View>: View {
     private let info: String?
     private let isRequired: Bool
     private let isEnabled: Bool
+    /// Width of the label column. Defaults to the shared one; a screen whose labels are long
+    /// machine names passes a wider value rather than moving every other screen.
+    private let labelWidth: CGFloat
     private let control: Control
 
     public init(
@@ -23,6 +26,7 @@ public struct FormRow<Control: View>: View {
         info: String? = nil,
         isRequired: Bool = false,
         isEnabled: Bool = true,
+        labelWidth: CGFloat = Metrics.labelColumnWidth,
         @ViewBuilder control: () -> Control
     ) {
         self.label = label
@@ -30,6 +34,7 @@ public struct FormRow<Control: View>: View {
         self.info = info
         self.isRequired = isRequired
         self.isEnabled = isEnabled
+        self.labelWidth = labelWidth
         self.control = control()
     }
 
@@ -44,6 +49,14 @@ public struct FormRow<Control: View>: View {
         // Top alignment plus a label box of the control's own height pins the label to the first
         // line of the column, so the caption can be any height without moving it. The control
         // column is kept as a VStack because that is what stacks a multi-statement closure.
+        //
+        // The control column carries the same minimum height as the label box, and that is what
+        // puts a SHORT control on the label's line. Reported on the global settings page
+        // (2026-10-08, ninth review): the switch is about 18pt tall against the box's 24, so
+        // top-aligning the column left the switch riding high — measured at 3.5pt off the
+        // label's centre in the reported screenshot. Centring the column's contents inside the
+        // box gives both cells the same centre, and a field (already taller than the box) and a
+        // field-with-caption (taller still) are untouched.
         VStack(alignment: .leading, spacing: Spacing.xxs) {
             HStack(alignment: .top, spacing: Metrics.labelToControlGap) {
                 labelCell
@@ -52,13 +65,14 @@ public struct FormRow<Control: View>: View {
                     control
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(minHeight: Metrics.controlVisualHeight, alignment: .leading)
             }
             .frame(minHeight: Metrics.rowHeight)
             if let help {
                 // Indented to the control column so the caption still reads as belonging to the
                 // field above it, not to the row as a whole.
                 HelpText(help)
-                    .padding(.leading, Metrics.labelColumnWidth + Metrics.labelToControlGap)
+                    .padding(.leading, labelWidth + Metrics.labelToControlGap)
             }
         }
         .opacity(isEnabled ? 1 : 0.55)
@@ -86,7 +100,7 @@ public struct FormRow<Control: View>: View {
                 InfoBadge(info)
             }
         }
-        .frame(width: Metrics.labelColumnWidth, alignment: .trailing)
+        .frame(width: labelWidth, alignment: .trailing)
         .frame(maxHeight: .infinity, alignment: .center)
     }
 }
@@ -220,28 +234,41 @@ public struct InfoBadge: View {
 
 /// The body of an info popover.
 ///
-/// Extracted from `InfoBadge` so its size can be measured directly. The box has to hug the text:
-/// a forced minimum width made short explanations sit in an oversized empty box, and generous
-/// padding inflated the height. Wrapping still happens at a comfortable reading width instead.
+/// The box hugs its text and is always tall enough for it. Both halves of that need the width to
+/// be *decided* before the text is laid out:
+///
+/// `frame(maxWidth:)` alone clamps the width the layout reports but proposes nothing to the text,
+/// so the text is laid out on one unbroken line while the box claims to be narrow — the height
+/// that comes back is one line's, the three-line text spills out of it, and the popover draws on
+/// top of the rows above and below. Measured, not guessed: with `maxWidth` the box reported
+/// 720x30 for a text that needs three lines at 300pt.
+///
+/// So the width is measured first (a short note keeps its own width, a long one takes the cap)
+/// and handed to the text as a definite width. A definite width is proposed to the text, the
+/// text wraps to it, and the height that comes back is the height it actually needs.
 struct InfoPopoverContent: View {
     let text: String
 
     /// Widest the explanation grows before it wraps onto another line.
     static let maxWidth: CGFloat = 300
 
+    /// Width the text needs on a single line, in the same font the view draws it with.
+    static func naturalWidth(of text: String) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: Typography.helpSize)
+        return (text as NSString).size(withAttributes: [.font: font]).width
+    }
+
+    /// The width this note is laid out at: its own, unless that would run past the cap.
+    var layoutWidth: CGFloat {
+        min(Self.naturalWidth(of: text), Self.maxWidth)
+    }
+
     var body: some View {
         Text(text)
             .font(Typography.help)
             .foregroundStyle(Color.token(Palette.textPrimary))
-            // Wrap rather than run on: `fixedSize(vertical: true)` lets the text take as many
-            // lines as it needs instead of being stretched onto one.
-            .fixedSize(horizontal: false, vertical: true)
-            // `maxWidth`, NOT `width`. A fixed width made every note exactly 300pt wide, so a
-            // seven-character label sat in a large empty box. A maximum lets a short note hug
-            // its text while a long one still wraps at a readable measure.
-            .frame(maxWidth: Self.maxWidth, alignment: .leading)
+            .frame(width: layoutWidth, alignment: .leading)
             .padding(Spacing.sm)
-            .fixedSize(horizontal: true, vertical: true)
     }
 }
 

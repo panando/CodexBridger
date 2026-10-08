@@ -117,7 +117,7 @@ extension ProviderConfiguration {
 
 extension CodexBridgerConfiguration {
     enum CodingKeys: String, CodingKey {
-        case schemaVersion, providers, activeProviderID, activeModelSlug
+        case schemaVersion, providers, activeProviderID, activeModelSlug, publishedProvider
         case modelReasoningEffort, modelReasoningSummary, modelVerbosity
         case modelSupportsReasoningSummaries, catalogTemplateSlug, verifyAfterWrite
         case interfaceLanguage
@@ -139,6 +139,8 @@ extension CodexBridgerConfiguration {
         }
         self.activeProviderID = container.lenientOptional(.activeProviderID)
         self.activeModelSlug = container.lenientOptional(.activeModelSlug)
+        // Absent in configs written before the field existed: nothing has been applied yet.
+        self.publishedProvider = container.lenientOptional(.publishedProvider)
         self.modelReasoningEffort = container.lenientOptional(.modelReasoningEffort)
         self.modelReasoningSummary = container.lenientOptional(.modelReasoningSummary)
         self.modelVerbosity = container.lenientOptional(.modelVerbosity)

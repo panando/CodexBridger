@@ -246,21 +246,27 @@ final class ActivationInjectionTests: XCTestCase {
     /// near-identical copies of a file the app can regenerate at any time. A config naming one
     /// of our providers is reproducible, so it is skipped; the activation says so in a warning
     /// rather than doing it silently.
-    func testSwitchingBetweenManagedProvidersDoesNotAccumulateBackups() throws {
+    /// Switching between the app's own providers replaces the files ChatGPT reads, so the previous
+    /// pair is copied aside every time.
+    ///
+    /// The user's ruling of 2026-10-08 reversed the earlier optimisation here. Every activation
+    /// used to copy the config and auth files, and a session flipping between two of the app's own
+    /// providers filled the backup folder with near-identical copies of a file the app can
+    /// regenerate, so the writer started skipping those. That made the one action that replaces
+    /// what ChatGPT reads the only action with no way back; the copy is unconditional again.
+    func testSwitchingBetweenManagedProvidersBacksThePreviousFilesUp() throws {
         let model = try makeReadyModel()
         let first = try XCTUnwrap(model.draft?.provider)
         let firstTarget = try XCTUnwrap(first.models.first)
         model.activate(providerID: first.id, modelID: firstTarget.id)
-        let deadline = Date().addingTimeInterval(20)
-        while model.isActivating && Date() < deadline {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-        }
+        waitForActivationToEnd(model)
         let afterFirst = (try? FileManager.default
             .contentsOfDirectory(atPath: paths.backupDirectory.path)) ?? []
         XCTAssertTrue(afterFirst.isEmpty,
                       "a fresh home has nothing to back up, got \(afterFirst)")
 
-        // Switch to a second provider we also manage: the first config is ours, so skip it.
+        // Switch to a second provider we also manage. Its predecessor is now on disk and has to
+        // be kept.
         let other = try XCTUnwrap(ProviderPreset.builtIn.dropFirst().first)
         model.createProvider(from: other)
         model.draft?.provider.bearerToken = "sk-second"
@@ -268,16 +274,17 @@ final class ActivationInjectionTests: XCTestCase {
         let second = try XCTUnwrap(model.draft?.provider)
         let secondTarget = try XCTUnwrap(second.models.first)
         model.activate(providerID: second.id, modelID: secondTarget.id)
-        let deadline2 = Date().addingTimeInterval(20)
-        while model.isActivating && Date() < deadline2 {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-        }
+        waitForActivationToEnd(model)
         let afterSecond = (try? FileManager.default
             .contentsOfDirectory(atPath: paths.backupDirectory.path)) ?? []
-        XCTAssertTrue(afterSecond.isEmpty,
-                      "switching between our own providers must not create backups, got \(afterSecond)")
-        XCTAssertTrue(model.lastActivation?.warnings.contains { $0.contains("跳过备份") } ?? false,
-                      "the skip must be reported, not silent")
+        XCTAssertTrue(
+            afterSecond.contains { $0.hasPrefix("config-") && $0.hasSuffix("-bak.toml") },
+            "the replaced config must be kept, got \(afterSecond)"
+        )
+        XCTAssertTrue(
+            afterSecond.contains { $0.hasPrefix("auth-") && $0.hasSuffix("-bak.json") },
+            "and so must the replaced auth file, got \(afterSecond)"
+        )
 
         // The activation itself must still have happened.
         let config = try String(contentsOf: paths.configTOML, encoding: .utf8)
@@ -365,4 +372,117 @@ final class ActivationInjectionTests: XCTestCase {
             "the user must be able to decline"
         )
     }
+
+    // MARK: - The action bar has to report what the action did
+
+    /// Reported 2026-10-08: after a successful 更新配置 the button stayed lit and the screen said
+    /// nothing, so the click looked ignored. The files were written — the activation path had been
+    /// filling `status` in all along — but no view read that value. Same shape of bug as the
+    /// `pendingActivation` one above, so it gets the same two checks: the state is produced, and
+    /// something consumes it.
+    func testAActivationLeavesAMessageForTheActionBar() throws {
+        let model = try makeReadyModel()
+        let provider = try XCTUnwrap(model.draft?.provider)
+        let target = try XCTUnwrap(provider.models.first)
+
+        model.requestActivation(providerID: provider.id, modelID: target.id)
+        let deadline = Date().addingTimeInterval(20)
+        while model.isActivating && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+
+        XCTAssertEqual(model.status.kind, .success, "a finished activation must report success")
+        XCTAssertFalse(model.status.isEmpty, "and it must say something")
+        XCTAssertTrue(
+            model.status.message.contains(provider.name),
+            "the message must name the provider: " + model.status.message
+        )
+    }
+
+    func testAViewActuallyDrawsTheActionStatus() throws {
+        let source = try String(
+            contentsOf: Snapshot.packageRoot
+                .appendingPathComponent("Sources/CodexBridgerUI/ProviderConfigView.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(
+            source.contains("model.status"),
+            "a view must draw status, or a successful activation says nothing"
+        )
+    }
+
+    /// The channel belongs to the action the user took, not to bookkeeping: `persist()` writes
+    /// this app's own settings file on every small change, and "已保存到 …/codexbridger/config.json"
+    /// is not news about the provider.
+    func testPersistingAppSettingsDoesNotUseTheActionBarChannel() throws {
+        let model = try makeReadyModel()
+        model.status = .idle
+        model.persist()
+        XCTAssertEqual(model.status, .idle, "persist must not post a message to the action bar")
+    }
+
+    /// And the message does not follow the user to another provider.
+    func testTheActionMessageDoesNotFollowTheUserToAnotherProvider() throws {
+        let model = try makeReadyModel()
+        let first = try XCTUnwrap(model.configuration.providers.first?.id)
+        let preset = try XCTUnwrap(ProviderPreset.builtIn.first)
+        model.createProvider(from: preset)
+        let second = try XCTUnwrap(model.draft?.provider.id)
+        XCTAssertNotEqual(first, second, "the test needs two providers")
+
+        model.status = .success("已激活 上一个 · model-x")
+        model.beginEditing(providerID: first)
+
+        XCTAssertEqual(model.status, .idle, "the message belongs to the provider it was about")
+    }
+
+    // MARK: - A note is not a failure, and a success does not stay for good
+
+    /// A successful activation says so and then gets out of the way: green, one line, gone in a few
+    /// seconds. Reported 2026-10-08: it used to be red and to sit there for good, because an
+    /// informational "no backup needed" note was being reported as a warning.
+    func testASuccessfulActivationClearsItsOwnMessage() throws {
+        let model = try makeReadyModel()
+        let provider = try XCTUnwrap(model.draft?.provider)
+        model.activate(providerID: provider.id, modelID: try XCTUnwrap(provider.models.first).id)
+        waitForActivationToEnd(model)
+
+        XCTAssertEqual(model.status.kind, .success, model.status.message)
+        XCTAssertTrue(
+            model.status.message.contains(provider.name),
+            "the message names the provider: " + model.status.message
+        )
+
+        let deadline = Date().addingTimeInterval(10)
+        while model.status.kind != .idle && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        XCTAssertEqual(model.status.kind, .idle, "a success must clear itself, not sit there")
+    }
+
+    /// The opposite rule for a real problem: it stays until the next action replaces it.
+    func testAFailedActivationStaysOnScreen() throws {
+        let model = try makeReadyModel()
+
+        model.failActivation(ActivationBoom())
+
+        XCTAssertEqual(model.status.kind, .failure)
+        let deadline = Date().addingTimeInterval(3.6)
+        while Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        XCTAssertEqual(model.status.kind, .failure, "a failure must not time out")
+    }
+
+    private func waitForActivationToEnd(_ model: AppModel) {
+        let deadline = Date().addingTimeInterval(20)
+        while model.isActivating && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+    }
+}
+
+/// A stand-in for a write that blew up.
+private struct ActivationBoom: LocalizedError {
+    var errorDescription: String? { "写文件失败" }
 }

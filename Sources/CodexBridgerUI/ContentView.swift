@@ -104,6 +104,12 @@ public struct ContentView: View {
                     )
                 }
             }
+            // Opens the global settings screen on launch. Same reason as the trigger below:
+            // a script cannot click, so this is how the screen gets inspected.
+            if ProcessInfo.processInfo.environment["CODEXBRIDGER_OPEN_GLOBAL_SETTINGS"] == "1" {
+                model.selectedSection = .globalSettings
+                model.loadGlobalSettings()
+            }
             // Opens the Settings window on launch when asked for from the environment, the same
             // way CODEXBRIDGER_APPEARANCE forces an appearance. There is no way to click the gear
             // from a script — Accessibility permission is not granted — so this is how the window
@@ -195,6 +201,15 @@ public struct ContentView: View {
 
     @ViewBuilder
     private var detail: some View {
+        if model.selectedSection == .globalSettings {
+            GlobalSettingsView(model: model)
+        } else {
+            providerDetail
+        }
+    }
+
+    @ViewBuilder
+    private var providerDetail: some View {
         VStack(spacing: 0) {
             // A config file that failed to load must never look like an empty install.
             if let error = model.loadErrorMessage {
@@ -232,6 +247,18 @@ public struct ContentView: View {
 struct SidebarView: View {
     @ObservedObject var model: AppModel
 
+    /// The count beside the Add/Delete buttons.
+    ///
+    /// Chinese says "0 个" and needs no plural; English says "1 provider" and "3 providers",
+    /// which one template cannot do. The count picks the phrase: `1 个` has its own entry and
+    /// every other count shares ` 个`. The Chinese interface reads exactly as it did before —
+    /// the translation was simply missing, so an English interface showed a bare Chinese
+    /// measure word.
+    private var providerCount: String {
+        let count = model.configuration.providers.count
+        return count == 1 ? model.t("1 个") : String(count) + model.t(" 个")
+    }
+
     /// Providers grouped by their stored category, in first-appearance order.
     private var groups: [(category: String, providers: [ProviderConfiguration])] {
         var order: [String] = []
@@ -250,20 +277,71 @@ struct SidebarView: View {
         }
     }
 
+    /// A section heading inside the sidebar, styled like the provider family captions so the
+    /// two levels of heading read as the same kind of thing.
+    private func sectionCaption(_ title: String, topPadding: CGFloat) -> some View {
+        Text(title)
+            .font(Typography.sectionCaption)
+            .foregroundStyle(Color.token(Palette.textHelp))
+            .padding(.horizontal, Spacing.md)
+            .padding(.top, topPadding)
+            .padding(.bottom, Spacing.xxs)
+    }
+
+    /// The entry above the provider list. Selecting it swaps the detail pane.
+    private var globalSettingsRow: some View {
+        let isSelected = model.selectedSection == .globalSettings
+        return Button {
+            model.selectedSection = .globalSettings
+            model.loadGlobalSettings()
+        } label: {
+            HStack(spacing: Spacing.sm) {
+                RoundedRectangle(cornerRadius: Radius.xs, style: .continuous)
+                    .fill(isSelected
+                          ? Color.token(Palette.selectionGlyphFill)
+                          : Color.token(Palette.accentText).opacity(0.14))
+                    .frame(width: Metrics.sidebarGlyph, height: Metrics.sidebarGlyph)
+                    .overlay(
+                        Image(systemName: "slider.horizontal.3")
+                            .iconFont(.s, weight: .semibold)
+                            .foregroundStyle(isSelected
+                                             ? Color.token(Palette.textOnAccent)
+                                             : Color.token(Palette.accentText))
+                    )
+                    .accessibilityHidden(true)
+                Text(model.t("全局配置"))
+                    .font(Typography.control)
+                    // Same rule as the provider rows: on the selection fill the label has to
+                    // take the on-accent colour. This used to be textPrimary in both branches,
+                    // which drew a black label on the blue fill.
+                    .foregroundStyle(isSelected
+                                     ? Color.token(Palette.textOnAccent)
+                                     : Color.token(Palette.textPrimary))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, Spacing.sm)
+            .padding(.vertical, Spacing.xs)
+            .frame(minHeight: Metrics.minHitTarget, alignment: .center)
+            .background(
+                RoundedRectangle(cornerRadius: Radius.sm)
+                    .fill(isSelected ? Color.token(Palette.selectionFill) : Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, Spacing.sm)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Separates the title bar from the body, matching the rule in the detail pane so the
             // line reads as one edge across the window.
             Divider()
-            Text(model.t("模型提供商"))
-                .font(Typography.sectionTitle)
-                .foregroundStyle(Color.token(Palette.textPrimary))
-                .frame(maxWidth: .infinity)
-                .padding(.top, Spacing.sm)
-                .padding(.bottom, Spacing.xs)
-            Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.xs) {
+                    sectionCaption(model.t("模型提供商"), topPadding: Spacing.md)
                     if groups.isEmpty {
                         Text(model.t("还没有提供商"))
                             .font(Typography.help)
@@ -283,11 +361,17 @@ struct SidebarView: View {
                             ProviderRow(
                                 provider: provider,
                                 isActive: model.configuration.activeProviderID == provider.id,
-                                isSelected: model.selectedProviderID == provider.id,
+                                // Selection is about which screen is open, so a provider row is
+                                // only selected while the provider screen is showing.
+                                isSelected: model.selectedSection == .providers
+                                    && model.selectedProviderID == provider.id,
                                 inUseLabel: model.t("使用中"),
                                 missingAddressLabel: model.t("还没填地址")
                             )
-                            .onTapGesture { model.selectedProviderID = provider.id }
+                            .onTapGesture {
+                                model.selectedSection = .providers
+                                model.selectedProviderID = provider.id
+                            }
                             .contextMenu {
                                 Button("复制提供商") { model.duplicateProvider(provider.id) }
                                 Button("删除提供商", role: .destructive) {
@@ -301,21 +385,42 @@ struct SidebarView: View {
                 .padding(.bottom, Spacing.md)
             }
 
+            // The app-wide settings sit at the bottom, next to the action bar, so the whole upper
+            // area belongs to the provider list. At the top the row read as one more heading in
+            // the provider section.
+            VStack(alignment: .leading, spacing: Spacing.xxs) {
+                sectionCaption(model.t("其他配置"), topPadding: Spacing.sm)
+                globalSettingsRow
+            }
+            .padding(.bottom, Spacing.sm)
+
             Divider()
 
+            // These two act on the provider list, so while the settings screen is showing they
+            // are not just useless but misleading: they look like they belong to whatever is on
+            // screen. Disabled, with the reason on hover.
             HStack(spacing: Spacing.sm) {
                 Button(model.t("添加")) { model.isShowingPresetPicker = true }
                     .buttonStyle(.bordered)
                     .controlSize(.large)
+                    .disabled(model.selectedSection == .globalSettings)
+                    .help(model.selectedSection == .globalSettings
+                          ? "添加提供商；先点左侧「模型提供商」下的条目回到提供商界面"
+                          : "新建一个提供商")
                 Button(model.t("删除")) {
                     if let id = model.selectedProviderID { model.deleteProvider(id) }
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
-                .disabled(model.selectedProviderID == nil)
-                .help("删除当前选中的提供商（会先备份再改文件）")
+                .disabled(
+                    model.selectedProviderID == nil
+                        || model.selectedSection == .globalSettings
+                )
+                // Deleting only edits this app's own settings: no backup, and nothing ChatGPT
+                // reads is touched. The tooltip used to promise a backup, which was not true.
+                .help("从软件里删掉这个提供商（不会动 ChatGPT 正在用的配置文件）")
                 Spacer(minLength: 0)
-                Text(String(model.configuration.providers.count) + " 个")
+                Text(providerCount)
                     .font(Typography.help)
                     .foregroundStyle(Color.token(Palette.textHelp))
             }

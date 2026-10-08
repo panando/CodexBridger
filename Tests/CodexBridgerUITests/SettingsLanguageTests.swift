@@ -26,6 +26,12 @@ final class SettingsLanguageTests: XCTestCase {
         model.setLanguage(.english)
         XCTAssertEqual(model.t("保存"), "Save")
         XCTAssertEqual(model.t("模型提供商"), "Providers")
+        // The sidebar heading of the group that holds the global configuration screen, which was
+        // still Chinese in an English interface (seen in the 2026-10-08 review screenshots).
+        XCTAssertEqual(model.t("其他配置"), "Other configuration")
+        // The sidebar count: English needs both forms, Chinese is the source either way.
+        XCTAssertEqual(model.t("1 个"), "1 provider")
+        XCTAssertEqual(model.t(" 个"), " providers")
     }
 
     /// And survives a restart, which is what makes it a setting rather than a toggle.

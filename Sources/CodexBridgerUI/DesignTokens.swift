@@ -60,9 +60,11 @@ public enum Metrics {
     /// The sidebar footer and the editor action bar sit side by side, so their top dividers have
     /// to land on the same line. They used different vertical padding, which left the two rules
     /// visibly offset; both now read this one value.
-    public static let actionBarVerticalPadding: CGFloat = Spacing.md
-    /// Fixed height for the two bottom bars, so their top rules always align.
-    public static let actionBarHeight: CGFloat = 52
+    public static let actionBarVerticalPadding: CGFloat = Spacing.sm
+    /// Fixed height for the bottom bars, so their top rules always align. Narrowed from 52 on
+    /// 2026-10-08: the bar held more empty space than its buttons needed. Every bar that shares
+    /// this value moves together, which is the point of it being one value.
+    public static let actionBarHeight: CGFloat = 44
     /// Height of the icon-only button chrome inside its 44pt hit area.
     public static let iconChrome: CGFloat = 22
     /// Visual size of the small square provider glyph in the sidebar.
@@ -71,6 +73,16 @@ public enum Metrics {
     /// Right-aligned label column. Value taken from the APIBypass source:
     /// `Text(...).frame(width: 100, alignment: .trailing)`.
     public static let labelColumnWidth: CGFloat = 100
+    /// Wider label column for the global settings screen, whose labels are config.toml key
+    /// names rather than prose.
+    ///
+    /// Measured the same way each time the set of keys changed: ~7pt per character at
+    /// `Typography.label`, plus the info badge. The longest key the screen shows now is
+    /// `show_raw_agent_reasoning` at 24 characters, so 200pt fits it with margin. This used to
+    /// be 290 when the page still showed 36-character keys; keeping that value left a visible
+    /// empty band in front of every row. A separate value so the prose-labelled screens keep
+    /// their 100pt column.
+    public static let settingsLabelWidth: CGFloat = 200
     /// Gap between the label column and the control column.
     public static let labelToControlGap: CGFloat = Spacing.md
     /// Card interior padding.
@@ -119,8 +131,13 @@ public enum Palette {
         light: NSColor(srgbRed: 0.33, green: 0.33, blue: 0.34, alpha: 1),
         dark: NSColor(srgbRed: 0.72, green: 0.72, blue: 0.74, alpha: 1)
     )
+    /// Annotation under a control. Lightened as far as it can go on 2026-10-08: the request was
+    /// that explanatory text must not compete with the row it explains, and 0.45 is the lightest
+    /// grey that still clears WCAG AA (4.5:1) on the card surface — measured 4.76:1 by
+    /// DesignTokenTests. Anything lighter fails that test, which is the point of it existing.
+    /// The dark variant is unchanged: it was tuned against the dark surface, not this one.
     public static let textHelp = dynamic(
-        light: NSColor(srgbRed: 0.42, green: 0.42, blue: 0.43, alpha: 1),
+        light: NSColor(srgbRed: 0.45, green: 0.45, blue: 0.46, alpha: 1),
         dark: NSColor(srgbRed: 0.66, green: 0.66, blue: 0.68, alpha: 1)
     )
     public static let textOnAccent = NSColor.white
@@ -208,7 +225,10 @@ public enum Typography {
     public static let bodyMedium = Font.system(size: 13, weight: .medium)
     public static let bodyStrong = Font.system(size: 13, weight: .semibold)
     /// Help text: 11pt, the single size used for every explanatory string.
-    public static let help = Font.system(size: 11, weight: .regular)
+    public static let helpSize: CGFloat = 11
+    /// Exposed so a view that has to measure its own text (the info popover) uses the same
+    /// point size the renderer does, rather than a second copy of the number.
+    public static let help = Font.system(size: helpSize, weight: .regular)
     /// The small grey group label above a form section. APIBypass uses `.subheadline`
     /// (11pt regular) with `.secondary`, so this is regular, not medium.
     public static let sectionCaption = Font.system(size: 11, weight: .regular)

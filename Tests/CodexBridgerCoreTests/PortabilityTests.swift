@@ -61,7 +61,7 @@ final class PortabilityTests: XCTestCase {
 
         let writer = CodexConfigWriter(paths: p, templateSource: StaticCatalogTemplate())
         _ = try writer.activate(
-            provider: provider, model: model, configuration: configuration, managedProviderIDs: []
+            provider: provider, model: model, configuration: configuration
         )
 
         for url in [p.configTOML, p.authJSON, p.catalog(for: provider.id)] {
@@ -84,7 +84,7 @@ final class PortabilityTests: XCTestCase {
 
         let writer = CodexConfigWriter(paths: p, templateSource: StaticCatalogTemplate())
         _ = try writer.activate(
-            provider: provider, model: model, configuration: configuration, managedProviderIDs: []
+            provider: provider, model: model, configuration: configuration
         )
         XCTAssertTrue(FileManager.default.fileExists(atPath: p.configTOML.path))
         XCTAssertTrue(p.catalog(for: provider.id).path.hasPrefix(root.path),

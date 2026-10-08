@@ -3,44 +3,62 @@ import XCTest
 
 /// Seam: ActivationAction.availability(...) — whether the primary action bar button can be used.
 ///
-/// This is the regression guard for the reported bug. The button used to be disabled whenever the
-/// provider was the one ChatGPT was already using, and that was the only path that rewrote the
-/// model parameter file. So a user who edited the active provider's model parameters had no way
-/// to make the change reach ChatGPT. The button must stay usable there.
+/// The contract the user restated on 2026-10-08:
+///
+/// * 保存 writes this app's own settings file and nothing else.
+/// * 启用 applies the saved provider to ChatGPT, backing the previous files up first.
+/// * Once that has happened for the provider in use, the button goes flat — and a save that
+///   changes something brings it straight back.
+///
+/// The last part replaces the 1.1.0 rule, which kept the button usable for the active provider at
+/// all times. The trap that rule was guarding against — a changed provider with no way to reach the
+/// files — is still guarded: "changed since it was applied" is exactly what re-enables it.
 final class ActivationActionTests: XCTestCase {
 
     private func availability(
         hasModels: Bool = true,
         isDirty: Bool = false,
         hasErrors: Bool = false,
-        isAlreadyActive: Bool = false
+        isAlreadyActive: Bool = false,
+        isAlreadyPublished: Bool = false
     ) -> ActivationAction.Availability {
         ActivationAction.availability(
             hasModels: hasModels,
             isDirty: isDirty,
             hasErrors: hasErrors,
-            isAlreadyActive: isAlreadyActive
+            isAlreadyActive: isAlreadyActive,
+            isAlreadyPublished: isAlreadyPublished
         )
     }
 
-    func testTheProviderAlreadyInUseCanStillBeWrittenAgain() {
-        let state = availability(isAlreadyActive: true)
+    /// The reported complaint: after enabling, the button sat there lit while there was nothing
+    /// left to apply — and pressing it wrote the same files again, with a backup on the way.
+    func testTheProviderAlreadyAppliedCannotBeAppliedAgain() {
+        let state = availability(isAlreadyActive: true, isAlreadyPublished: true)
 
-        XCTAssertTrue(state.isEnabled, "the active provider must still be writable")
-        XCTAssertEqual(state.title, "更新配置")
+        XCTAssertFalse(state.isEnabled, "applying the same settings again is a no-op")
+        XCTAssertEqual(state.title, "启用")
+        XCTAssertTrue(
+            state.help.contains("改完保存后"),
+            "the help has to say how the button comes back: " + state.help
+        )
     }
 
-    func testTheActiveProviderSaysWhatTheButtonDoes() {
-        let state = availability(isAlreadyActive: true)
+    /// The way out still exists, which is what the 1.1.0 rule was protecting.
+    func testSavingAChangeBringsTheButtonBack() {
+        let state = availability(isAlreadyActive: true, isAlreadyPublished: false)
 
-        XCTAssertTrue(state.help.contains("ChatGPT"), "the help must say what gets written: \(state.help)")
+        XCTAssertTrue(state.isEnabled, "a saved change has to be publishable")
+        XCTAssertEqual(state.title, "启用")
+        XCTAssertTrue(state.help.contains("备份"), "the help promises the backup: " + state.help)
     }
 
-    func testANonActiveProviderSaysEnable() {
+    func testAProviderThatIsNotInUseCanBeApplied() {
         let state = availability()
 
         XCTAssertTrue(state.isEnabled)
         XCTAssertEqual(state.title, "启用")
+        XCTAssertTrue(state.help.contains("ChatGPT"), state.help)
     }
 
     func testUnsavedEditsBlockTheAction() {
@@ -50,11 +68,11 @@ final class ActivationActionTests: XCTestCase {
         XCTAssertEqual(state.help, "需要先保存")
     }
 
-    func testUnsavedEditsBlockUpdatingTheActiveProviderToo() {
-        let state = availability(isDirty: true, isAlreadyActive: true)
+    func testUnsavedEditsBlockTheActiveProviderToo() {
+        let state = availability(isDirty: true, isAlreadyActive: true, isAlreadyPublished: false)
 
         XCTAssertFalse(state.isEnabled)
-        XCTAssertEqual(state.title, "更新配置", "the title still describes the action")
+        XCTAssertEqual(state.title, "启用", "one action, one name")
     }
 
     func testFormErrorsBlockTheAction() {
@@ -71,10 +89,26 @@ final class ActivationActionTests: XCTestCase {
         XCTAssertEqual(state.help, "需要至少一个模型")
     }
 
+    /// One action, one name: the label no longer flips between 启用 and 更新配置.
+    func testTheButtonIsCalledEnableInEveryState() {
+        let cases: [ActivationAction.Availability] = [
+            availability(),
+            availability(isAlreadyActive: true),
+            availability(isAlreadyActive: true, isAlreadyPublished: true),
+            availability(isDirty: true),
+            availability(hasErrors: true),
+            availability(hasModels: false)
+        ]
+        for state in cases {
+            XCTAssertEqual(state.title, "启用", "unexpected label: \(state)")
+        }
+    }
+
     func testTheHelpAlwaysExplainsItself() {
         let cases: [ActivationAction.Availability] = [
             availability(),
             availability(isAlreadyActive: true),
+            availability(isAlreadyActive: true, isAlreadyPublished: true),
             availability(isDirty: true),
             availability(hasErrors: true),
             availability(hasModels: false)

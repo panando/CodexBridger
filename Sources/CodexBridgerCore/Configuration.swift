@@ -255,6 +255,21 @@ extension ProviderConfiguration {
         rhs.models = []
         return lhs == rhs
     }
+
+    /// Whether the files would be written from exactly this provider.
+    ///
+    /// `hasSamePublishedSettings` above deliberately ignores the model list and the id, because
+    /// it answers a narrower question (can a catalog write alone carry this change?). This one
+    /// answers "is what is on disk already this?", so both count: the catalog carries the
+    /// models, and a renamed id names a different table and a different file. `category` never
+    /// leaves this app, so changing it is not a reason to write anything.
+    public func hasSameAppliedState(as other: ProviderConfiguration) -> Bool {
+        var lhs = self
+        var rhs = other
+        lhs.category = ""
+        rhs.category = ""
+        return lhs == rhs
+    }
 }
 
 /// The whole persisted state of the app, stored in ~/.codex/codexbridger/config.json.
@@ -265,6 +280,10 @@ public struct CodexBridgerConfiguration: Codable, Equatable, Sendable {
     public var activeProviderID: String?
     /// The model currently written into config.toml, if any.
     public var activeModelSlug: String?
+    /// The provider as it was last written to the files, kept so the screen can tell whether the
+    /// button still has anything to apply. Set by every activation; absent in configs written
+    /// before it existed, which simply means "nothing has been applied since this was added".
+    public var publishedProvider: ProviderConfiguration?
 
     // Documented top-level settings CodexBridger is allowed to manage.
     public var modelReasoningEffort: ReasoningEffort?
@@ -289,6 +308,7 @@ public struct CodexBridgerConfiguration: Codable, Equatable, Sendable {
         providers: [ProviderConfiguration] = [],
         activeProviderID: String? = nil,
         activeModelSlug: String? = nil,
+        publishedProvider: ProviderConfiguration? = nil,
         modelReasoningEffort: ReasoningEffort? = nil,
         modelReasoningSummary: ReasoningSummary? = nil,
         modelVerbosity: ModelVerbosity? = nil,
@@ -301,6 +321,7 @@ public struct CodexBridgerConfiguration: Codable, Equatable, Sendable {
         self.providers = providers
         self.activeProviderID = activeProviderID
         self.activeModelSlug = activeModelSlug
+        self.publishedProvider = publishedProvider
         self.modelReasoningEffort = modelReasoningEffort
         self.modelReasoningSummary = modelReasoningSummary
         self.modelVerbosity = modelVerbosity

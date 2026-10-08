@@ -184,5 +184,70 @@ public enum Localization {
         "CodexBridger 只写入 ChatGPT 官方文档支持的字段，并把每次替换前的原文件备份到 backup/config-backup。":
             "CodexBridger only writes fields the official ChatGPT documentation supports, and backs "
             + "up the previous file to backup/config-backup before every replacement.",
+
+        // Global configuration screen (2026-10-08, seventh review round).
+        //
+        // Every annotation on that screen is a source string here, so the page reads in the
+        // language the interface is set to. The ⓘ entries open with the official sentence from
+        // docs/reference/codex-config-reference.md, then explain each value the drop-down
+        // offers, so the English side is still checkable against the reference.
+        "全局配置": "Global configuration",
+        "配置 config.toml 中的相应字段。mcp_servers / plugins / desktop 等设置不会在这里显示，也不会被改动。":
+            "These are the config.toml settings that belong to no provider. mcp_servers, plugins, "
+            + "desktop and the rest are not shown here and are never changed.",
+        "其他配置": "Other configuration",
+        // The provider count in the sidebar: one phrase per plural, because a substituted number
+        // cannot make English agree with itself.
+        "1 个": "1 provider",
+        " 个": " providers",
+        "审批与沙箱": "Approvals and sandbox",
+        "推理可见性": "Reasoning visibility",
+        "已展开": "expanded",
+        "已折叠": "collapsed",
+
+        // The six parameters. The ⓘ explanation is the only annotation: the caption that used to
+        // sit under every control said the same thing a second time and doubled the page height
+        // (2026-10-08, eighth review). Its English opens with the official sentence verbatim, so
+        // the check against the reference stays possible.
+        "执行命令前要不要先停一下。on-request：先问你（默认）；never：不问，直接执行。":
+            "Controls when ChatGPT pauses for approval before executing commands. "
+            + "on-request: it asks first (the default); never: it runs without asking.",
+        "上一条拦下来的请示由谁审。user：你自己看（默认）；auto_review：自动审查，不打扰你。":
+            "Who reviews eligible approval prompts under on-request or granular approval "
+            + "policies. user: you decide (the default); auto_review: reviewed automatically, "
+            + "without interrupting you.",
+        "能碰什么。read-only：只能读；workspace-write：改工作目录；danger-full-access：全放开，含联网。":
+            "Sandbox policy for filesystem and network access during command execution. "
+            + "read-only: reads only; workspace-write: may change the working directory; "
+            + "danger-full-access: no restrictions, network included.",
+        "命令要不要像你打开终端那样先读一遍 shell 配置（.zshrc 等）。默认打开。":
+            "Allow shell-based tools to use login-shell semantics. On by default: commands read "
+            + "your shell profile (.zshrc and the like) first; off uses a minimal environment.",
+        "把模型思考的过程藏起来，终端和命令行输出都不显示。和下面那一项互不影响。":
+            "Suppress reasoning events in both the TUI and codex exec output. On: only the final "
+            + "answer is surfaced. It is independent of the switch below.",
+        "把模型的原始推理原文显示出来（模型会输出才有）。":
+            "Surface raw reasoning content when the active model emits it.",
+
+        // The screen's own bars and notices.
+        "这些参数刚被别的程序改了，没有写入任何东西：":
+            "These settings were just changed by another program, so nothing was written:",
+        "：载入时是 ": ": loaded as ",
+        "未设置": "not set",
+        "，现在是 ": ", now ",
+        "已删除": "removed",
+        "用我的值覆盖": "Overwrite with mine",
+        "放弃这些键，其余照写": "Skip these keys and write the rest",
+        "没有需要更新的内容。": "There is nothing to update.",
+        "这些参数刚被别的程序改了，没有写入任何东西。":
+            "These settings were just changed by another program; nothing was written.",
+        // Four sentences rather than two with a substituted count: English says "1 setting" and
+        // "3 settings", and a pasted-in number cannot do that. The count picks the sentence.
+        "已更新 1 个参数。": "Updated 1 setting.",
+        "已更新 1 个参数，原文件已备份为 {file}。":
+            "Updated 1 setting; the previous file was backed up as {file}.",
+        "已更新 {n} 个参数。": "Updated {n} settings.",
+        "已更新 {n} 个参数，原文件已备份为 {file}。":
+            "Updated {n} settings; the previous file was backed up as {file}.",
     ]
 }

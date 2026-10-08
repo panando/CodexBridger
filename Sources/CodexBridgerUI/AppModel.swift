@@ -9,6 +9,14 @@ import CodexBridgerCore
 @MainActor
 public final class AppModel: ObservableObject {
 
+    /// What the last action that writes files had to say, drawn by the provider screen's action
+    /// bar.
+    ///
+    /// Reported 2026-10-08: "pressing 更新配置 leaves the button lit, as if the click was
+    /// ignored". The write did happen — this channel was being filled in all along — but no
+    /// view read it, so the screen never said so. `persist()` also used to write here ("saved
+    /// to <path>", about this app's own settings file), which no view read either and which
+    /// would have been noise on the provider screen; that write is gone.
     public struct Status: Equatable {
         public enum Kind { case idle, success, failure }
         public var kind: Kind
@@ -34,8 +42,37 @@ public final class AppModel: ObservableObject {
         }
     }
 
+    /// Which screen the detail pane shows.
+    public enum Section: Equatable, CaseIterable {
+        case providers
+        case globalSettings
+    }
+
+    /// The outcome of the last "update configuration" on the global settings screen.
+    public struct GlobalSettingsNotice: Equatable {
+        public enum Kind: Equatable { case success, warning, failure }
+        public var kind: Kind
+        public var message: String
+
+        public init(kind: Kind, message: String) {
+            self.kind = kind
+            self.message = message
+        }
+    }
+
     @Published public var configuration: CodexBridgerConfiguration = CodexBridgerConfiguration()
     @Published public var selectedProviderID: String?
+    /// Which screen the detail pane is showing.
+    @Published public var selectedSection: Section = .providers
+    /// What config.toml holds for the keys the global settings screen shows.
+    @Published public var globalSettingsStates: [String: GlobalSettingState] = [:]
+    /// The pending edits on that screen.
+    @Published public var globalSettingsDraft = GlobalSettingsDraft(loaded: [:])
+    /// Keys the user changed that somebody else changed too.
+    @Published public var globalSettingsConflicts: [GlobalSettingsConflict] = []
+    /// The outcome of the last update.
+    @Published public var globalSettingsNotice: GlobalSettingsNotice?
+    /// The provider screen's action result; see the note on `Status`.
     @Published public var status: Status = .idle
     @Published public var snapshot: CodexConfigSnapshot = CodexConfigSnapshot()
     @Published public var authKeyNames: [String] = []
@@ -46,26 +83,8 @@ public final class AppModel: ObservableObject {
     @Published public var pendingActivation: PendingActivation?
     @Published public var templateSourceDescription: String = "内置模板（已用 ChatGPT 校验）"
 
-    /// What happened to the provider's model parameter file during the last save.
-    ///
-    /// Kept apart from `editorPhase` on purpose: that channel is a transient confirmation that
-    /// clears itself, and a failure here must stay on screen until the situation changes.
-    public struct CatalogSyncNotice: Equatable {
-        public enum Kind: Equatable { case success, warning, failure }
-
-        public var kind: Kind
-        public var message: String
-
-        public init(kind: Kind, message: String) {
-            self.kind = kind
-            self.message = message
-        }
-    }
-
-    @Published public var catalogSyncNotice: CatalogSyncNotice?
-
-    /// Bumped on every publish, so a pending auto-dismiss cannot clear a newer notice.
-    private var catalogNoticeToken = 0
+    /// Bumped on every activation message, so a pending auto-dismiss cannot clear a newer one.
+    private var activationNoticeToken = 0
 
     public let paths: CodexPaths
     private let store: ConfigurationStore
@@ -142,13 +161,13 @@ public final class AppModel: ObservableObject {
         authKeyNames = reader.authKeyNames()
     }
 
+    /// Writes this app's own settings file.
+    ///
+    /// It reports nothing to the user on purpose: every caller is a small in-memory change that
+    /// rewrites the same file, and "已保存到 …/codexbridger/config.json" is bookkeeping about
+    /// this app's storage rather than news about the provider.
     public func persist() {
-        do {
-            try store.save(configuration)
-            status = .success("已保存到 " + paths.appConfiguration.path)
-        } catch {
-            status = .failure("保存失败: " + error.localizedDescription)
-        }
+        try? store.save(configuration)
     }
 
     // MARK: - Provider CRUD
@@ -279,9 +298,16 @@ public final class AppModel: ObservableObject {
             existingIDs: otherProviderIDs(excluding: providerID)
         )
         editorPhase = .editing
+        // The action bar's message was about some other provider; do not carry it over.
+        status = .idle
     }
 
-    /// Saves the draft. Invalid drafts are refused before anything touches the disk.
+    /// Saves the draft into this app's own settings file.
+    ///
+    /// Invalid drafts are refused before anything touches the disk. By the user's ruling of
+    /// 2026-10-08 this writes `codexbridger/config.json` and nothing else: no backup, and no
+    /// file ChatGPT reads. Applying a provider to ChatGPT — including the model parameter file —
+    /// is 启用's job, and that is the action that backs the previous files up.
     @discardableResult
     public func saveDraft() -> Bool {
         guard var current = draft else { return false }
@@ -301,9 +327,6 @@ public final class AppModel: ObservableObject {
         }
 
         let originalID = current.original.id
-        // What was stored before this save, to tell a model edit (which the model parameter file
-        // carries) from a name/address/credential edit (which only activation can publish).
-        let previous = configuration.provider(id: originalID)
         if let index = configuration.providers.firstIndex(where: { $0.id == originalID }) {
             configuration.providers[index] = committed
         } else {
@@ -332,94 +355,7 @@ public final class AppModel: ObservableObject {
         publishTransient(.saved("已保存 " + committed.name))
         refreshCodexState()
         resolveTemplateSource()
-        syncCatalogAfterSave(committed: committed, previous: previous)
         return true
-    }
-
-    // MARK: - Model parameter file
-
-    /// Brings the model parameter file back in step after a save.
-    ///
-    /// Only the provider ChatGPT is actually using gets a file written: a catalog for a provider
-    /// nobody activated would be a file nothing references. What a catalog *cannot* carry — a
-    /// renamed id, a new address or credential — is reported instead of silently dropped, because
-    /// the user has no other way to learn that Save did not cover it.
-    private func syncCatalogAfterSave(
-        committed: ProviderConfiguration,
-        previous: ProviderConfiguration?
-    ) {
-        publishCatalogSync(nil)
-        guard configuration.activeProviderID == committed.id else { return }
-
-        if let previous, previous.id != committed.id {
-            publishCatalogSync(CatalogSyncNotice(
-                kind: .warning,
-                message: "提供商 ID 改了，config.toml 还指着旧 ID。点「更新配置」重写一次。"
-            ))
-            return
-        }
-
-        let settingsChanged = previous.map { !$0.hasSamePublishedSettings(as: committed) } ?? false
-        if settingsChanged {
-            publishCatalogSync(CatalogSyncNotice(
-                kind: .warning,
-                message: "地址或密钥改了。点「更新配置」才会写进 ChatGPT。"
-            ))
-        }
-        regenerateCatalog(for: committed, keepingExistingNotice: settingsChanged)
-    }
-
-    /// Rewrites the provider's catalog, off the main thread.
-    ///
-    /// The template comes from the ChatGPT CLI when it is installed, which means launching a
-    /// subprocess, so the resolver is built inside the task rather than before it.
-    private func regenerateCatalog(
-        for provider: ProviderConfiguration,
-        keepingExistingNotice: Bool
-    ) {
-        let slug = configuration.catalogTemplateSlug
-        let appModel = self
-        Task.detached(priority: .utility) {
-            let writer = ModelCatalogWriter(
-                paths: appModel.paths,
-                templateSource: CatalogTemplateResolver(preferredSlug: slug)
-            )
-            do {
-                let outcome = try writer.writeIfChanged(
-                    provider: provider,
-                    preferredTemplateSlug: slug
-                )
-                await MainActor.run {
-                    guard outcome.action == .written, !keepingExistingNotice else { return }
-                    appModel.publishCatalogSync(CatalogSyncNotice(
-                        kind: .success,
-                        message: "模型参数文件已同步"
-                    ))
-                }
-            } catch {
-                await MainActor.run {
-                    appModel.publishCatalogSync(CatalogSyncNotice(
-                        kind: .failure,
-                        message: "模型参数文件没更新：" + error.localizedDescription
-                            + "。config.json 已保存，ChatGPT 仍在使用上一次的参数文件。"
-                    ))
-                }
-            }
-        }
-    }
-
-    /// Publishes (or clears) the catalog notice. A success clears itself; anything that needs the
-    /// user's attention stays until the next save replaces it.
-    private func publishCatalogSync(_ notice: CatalogSyncNotice?) {
-        catalogSyncNotice = notice
-        catalogNoticeToken += 1
-        let token = catalogNoticeToken
-        guard let notice, notice.kind == .success else { return }
-        Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(Self.successNoticeSeconds * 1_000_000_000))
-            guard let self, token == self.catalogNoticeToken else { return }
-            self.catalogSyncNotice = nil
-        }
     }
 
     /// Throws away unsaved edits.
@@ -759,10 +695,7 @@ public final class AppModel: ObservableObject {
         Task.detached(priority: .userInitiated) {
             do {
                 let result = try writer.activate(
-                    provider: provider, model: model, configuration: current,
-                    // Whatever Codex points at now is reproducible if it names one of ours, so
-                    // switching between managed providers stops piling up backups.
-                    managedProviderIDs: Set(current.providers.map(\.id))
+                    provider: provider, model: model, configuration: current
                 )
                 await appModel.finishActivation(result, provider: provider, model: model)
             } catch {
@@ -779,16 +712,37 @@ public final class AppModel: ObservableObject {
         lastActivation = result
         templateSourceDescription = result.templateSourceDescription
         isActivating = false
-        if result.warnings.isEmpty {
-            status = .success("已激活 " + provider.name + " · " + model.slug)
+        // Remember what the files were written from, so the button knows whether it still has
+        // anything to apply. Stored, not just held: the state has to survive a restart.
+        configuration.publishedProvider = provider
+        persist()
+        if !result.warnings.isEmpty {
+            publishActivationStatus(.failure(result.warnings.joined(separator: " ")))
         } else {
-            status = .failure(result.warnings.joined(separator: " "))
+            publishActivationStatus(.success("已激活 " + provider.name + " · " + model.slug))
         }
         refreshCodexState()
     }
 
     public func failActivation(_ error: Error) {
         isActivating = false
-        status = .failure("激活失败: " + error.localizedDescription)
+        publishActivationStatus(.failure("激活失败: " + error.localizedDescription))
+    }
+
+    /// Publishes the action bar's message for an activation.
+    ///
+    /// A success clears itself; anything that needs the user's attention stays until the next
+    /// action replaces it. Reported 2026-10-08 — a successful activation left a red message on
+    /// screen for good, because "no backup needed" was being reported as a warning.
+    private func publishActivationStatus(_ next: Status) {
+        status = next
+        activationNoticeToken += 1
+        let token = activationNoticeToken
+        guard next.kind == .success else { return }
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(Self.successNoticeSeconds * 1_000_000_000))
+            guard let self, token == self.activationNoticeToken else { return }
+            self.status = .idle
+        }
     }
 }

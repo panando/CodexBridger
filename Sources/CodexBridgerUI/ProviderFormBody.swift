@@ -182,7 +182,7 @@ public struct ProviderFormBody: View {
                         onMoveUp: { model.moveModelInDraft(entry.id, by: -1) },
                         onMoveDown: { model.moveModelInDraft(entry.id, by: 1) },
                         onEdit: { model.editingModelID = entry.id },
-                        onDelete: { model.removeModelFromDraft(entry.id) }
+                        onDelete: { model.requestRemoveModelFromDraft(entry.id) }
                     )
                 }
             }

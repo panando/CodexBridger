@@ -81,6 +81,8 @@ public final class AppModel: ObservableObject {
     @Published public var isActivating = false
     /// Set when an activation would replace a different active provider.
     @Published public var pendingActivation: PendingActivation?
+    /// Set when a delete is waiting for the user to agree to it; see `PendingDeletion`.
+    @Published public var pendingDeletion: PendingDeletion?
     @Published public var templateSourceDescription: String = "内置模板（已用 ChatGPT 校验）"
 
     /// Bumped on every activation message, so a pending auto-dismiss cannot clear a newer one.
@@ -569,7 +571,15 @@ public final class AppModel: ObservableObject {
         persist()
     }
 
-    public func deleteProvider(_ id: String) {
+    /// Deletes a provider and everything hanging off it, without asking.
+    ///
+    /// `private` on purpose: a view cannot reach it, so no button can delete a provider by
+    /// accident. Reported twice from the running app that a delete happened with no prompt —
+    /// the first time the sidebar button and the row's context menu both called this directly,
+    /// the second time a build was in circulation with only one of them rewired. Views ask
+    /// through `requestDeleteProvider`, and `confirmPendingDeletion` is the only caller here;
+    /// rewiring a view back to a raw delete now fails to compile.
+    private func applyDeletion(of id: String) {
         configuration.providers.removeAll { $0.id == id }
         if configuration.activeProviderID == id {
             configuration.activeProviderID = nil
@@ -578,8 +588,107 @@ public final class AppModel: ObservableObject {
         if selectedProviderID == id {
             selectedProviderID = configuration.providers.first?.id
         }
+        // The editor must not keep a provider that no longer exists. The window also reloads
+        // the draft when the selection changes, but the model should not depend on a view
+        // being there to stay consistent: deleting the provider being edited would otherwise
+        // leave its form on screen after it was deleted.
+        if draft?.original.id == id || draft?.provider.id == id {
+            if let next = selectedProviderID, configuration.provider(id: next) != nil {
+                beginEditing(providerID: next)
+            } else {
+                draft = nil
+            }
+        }
         persist()
     }
+
+    // MARK: - Deletion confirmation
+
+    /// A delete that is waiting for the user to agree to it.
+    ///
+    /// Deleting a provider used to happen on the click: the sidebar's 删除 button and the row's
+    /// context menu both went straight to `deleteProvider`, so one slip of the mouse lost the
+    /// provider and its models with nothing to undo it. The prompt is carried here rather than
+    /// drawn from the sidebar because the model menu in the detail pane needs the same one, and
+    /// `ContentView` draws a single alert from this value.
+    public struct PendingDeletion: Identifiable, Equatable {
+        /// What is about to go away. The view reads only the copy; the action is applied here.
+        public enum Target: Equatable {
+            /// A provider in this app's list. Written as soon as it is confirmed.
+            case provider(id: String)
+            /// A model on the provider being edited. An unsaved change, so reverting the draft
+            /// brings it back.
+            case model(id: UUID)
+        }
+
+        public let id = UUID()
+        public let target: Target
+        /// The prompt, already in the interface language, so the view has nothing to look up.
+        public let title: String
+        public let message: String
+        public let confirmTitle: String
+    }
+
+    /// Asks before deleting a provider. Every entry point comes through here.
+    public func requestDeleteProvider(_ id: String) {
+        guard let provider = provider(id: id) else { return }
+        let name = provider.name.isEmpty ? id : provider.name
+        var message = t("「{name}」下有 {count}。删除只改 CodexBridger 自己的设置，config.toml 和 auth.json 不会被动。")
+            .replacingOccurrences(of: "{name}", with: name)
+            .replacingOccurrences(of: "{count}", with: modelCountPhrase(provider.models.count))
+        // Deleting the provider ChatGPT was switched to is worth spelling out: the app forgets
+        // what it activated, but the files keep naming that provider until something else is
+        // activated, so the mark and the disk disagree in between.
+        if configuration.activeProviderID == id {
+            message += " " + t("ChatGPT 正指着它：删掉以后「使用中」的标记也没了，配置文件要等你激活别的提供商时才会改写。")
+        }
+        pendingDeletion = PendingDeletion(
+            target: .provider(id: id),
+            title: t("删除这个提供商？"),
+            message: message,
+            confirmTitle: t("删除")
+        )
+    }
+
+    /// Asks before removing a model from the provider being edited.
+    public func requestRemoveModelFromDraft(_ modelID: UUID) {
+        guard let entry = draft?.provider.models.first(where: { $0.id == modelID }) else { return }
+        let name = entry.displayName.isEmpty ? entry.slug : entry.displayName
+        pendingDeletion = PendingDeletion(
+            target: .model(id: modelID),
+            title: t("移除这个模型？"),
+            message: t("「{name}」会从这个提供商里移除。这是还没保存的改动，点「取消」可以让它回来，保存或更新配置之后才真正生效。")
+                .replacingOccurrences(of: "{name}", with: name),
+            confirmTitle: t("移除")
+        )
+    }
+
+    /// Runs the delete the user just agreed to.
+    public func confirmPendingDeletion() {
+        guard let pending = pendingDeletion else { return }
+        // Cleared first: the action below publishes, and the prompt must not be able to fire a
+        // second time off one click.
+        pendingDeletion = nil
+        switch pending.target {
+        case .provider(let id):
+            applyDeletion(of: id)
+        case .model(let id):
+            removeModelFromDraft(id)
+        }
+    }
+
+    /// Drops the pending delete. This is what the prompt's Cancel button does.
+    public func cancelPendingDeletion() {
+        pendingDeletion = nil
+    }
+
+    /// "3 个模型" or "1 个模型", counting models the way the sidebar counts providers.
+    ///
+    /// Chinese needs no plural and English does, so the one case gets its own line in the table.
+    private func modelCountPhrase(_ count: Int) -> String {
+        count == 1 ? t("1 个模型") : String(count) + t(" 个模型")
+    }
+
 
     public func uniqueProviderID(base: String) -> String {
         let sanitized = base

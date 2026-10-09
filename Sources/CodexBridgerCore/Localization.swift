@@ -101,6 +101,25 @@ public enum Localization {
             "ChatGPT is using it; this rewrites config.toml and the model catalogue from the "
             + "current settings",
 
+        // Deletion confirmations. The two prompts that carry a name and a count are built at
+        // runtime, so the key is the template and the placeholders are substituted after the
+        // lookup. The key must stay on one line: the duplicate-key test reads the table one line
+        // at a time, and a key split across lines would never match its lookup.
+        "删除这个提供商？": "Delete this provider?",
+        "移除这个模型？": "Remove this model?",
+        "移除": "Remove",
+        "1 个模型": "1 model",
+        " 个模型": " models",
+        "「{name}」下有 {count}。删除只改 CodexBridger 自己的设置，config.toml 和 auth.json 不会被动。":
+            "{name} holds {count}. Deleting it changes only CodexBridger's own settings; "
+            + "config.toml and auth.json are left alone.",
+        "ChatGPT 正指着它：删掉以后「使用中」的标记也没了，配置文件要等你激活别的提供商时才会改写。":
+            "ChatGPT is pointing at it right now: the in-use mark goes away too, and the files "
+            + "are rewritten only when you activate another provider.",
+        "「{name}」会从这个提供商里移除。这是还没保存的改动，点「取消」可以让它回来，保存或更新配置之后才真正生效。":
+            "{name} is removed from this provider. This is an unsaved change: Cancel brings it "
+            + "back, and it takes effect when you save or update the configuration.",
+
         // Sections
         "提供商信息": "Provider",
         "认证": "Credentials",

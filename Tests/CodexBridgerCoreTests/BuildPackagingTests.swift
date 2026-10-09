@@ -39,7 +39,7 @@ final class BuildPackagingTests: XCTestCase {
             version.range(of: pattern, options: .regularExpression),
             "VERSION holds \"\(version)\", which Apple would reject for a bundle"
         )
-        XCTAssertEqual(version, "1.2.0", "the version this release ships as")
+        XCTAssertEqual(version, "1.2.1", "the version this release ships as")
     }
 
     /// Stamping replaces these keys, so removing them from the template breaks the build.

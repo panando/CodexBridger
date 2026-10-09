@@ -48,6 +48,20 @@ public struct ContentView: View {
                 .navigationSplitViewColumnWidth(Metrics.sidebarWidth)
         } detail: {
             detail
+                // The delete prompt hangs off the detail pane rather than off the whole window.
+                // Two `.alert` modifiers on one view shadow each other, and the activation prompt
+                // already owns the window's; where the alert is attached makes no difference to
+                // where it draws, since an alert is centred on the window either way.
+                .alert(
+                    model.pendingDeletion?.title ?? "",
+                    isPresented: pendingDeletionBinding
+                ) {
+                    Button(model.pendingDeletion?.confirmTitle ?? model.t("删除"),
+                           role: .destructive) { model.confirmPendingDeletion() }
+                    Button(model.t("取消"), role: .cancel) { model.cancelPendingDeletion() }
+                } message: {
+                    Text(model.pendingDeletion?.message ?? "")
+                }
         }
         .frame(minWidth: 1_040, minHeight: 660)
         .toolbarBackground(.visible, for: .windowToolbar)
@@ -196,6 +210,14 @@ public struct ContentView: View {
         Binding(
             get: { model.pendingActivation != nil },
             set: { if !$0 { model.cancelPendingActivation() } }
+        )
+    }
+
+    /// Dismissing the delete prompt by any route counts as declining it.
+    private var pendingDeletionBinding: Binding<Bool> {
+        Binding(
+            get: { model.pendingDeletion != nil },
+            set: { if !$0 { model.cancelPendingDeletion() } }
         )
     }
 
@@ -375,7 +397,7 @@ struct SidebarView: View {
                             .contextMenu {
                                 Button("复制提供商") { model.duplicateProvider(provider.id) }
                                 Button("删除提供商", role: .destructive) {
-                                    model.deleteProvider(provider.id)
+                                    model.requestDeleteProvider(provider.id)
                                 }
                             }
                         }
@@ -408,7 +430,7 @@ struct SidebarView: View {
                           ? "添加提供商；先点左侧「模型提供商」下的条目回到提供商界面"
                           : "新建一个提供商")
                 Button(model.t("删除")) {
-                    if let id = model.selectedProviderID { model.deleteProvider(id) }
+                    if let id = model.selectedProviderID { model.requestDeleteProvider(id) }
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
@@ -418,7 +440,7 @@ struct SidebarView: View {
                 )
                 // Deleting only edits this app's own settings: no backup, and nothing ChatGPT
                 // reads is touched. The tooltip used to promise a backup, which was not true.
-                .help("从软件里删掉这个提供商（不会动 ChatGPT 正在用的配置文件）")
+                .help("从软件里删掉这个提供商（会先问一次；不会动 ChatGPT 正在用的配置文件）")
                 Spacer(minLength: 0)
                 Text(providerCount)
                     .font(Typography.help)

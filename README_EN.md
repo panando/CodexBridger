@@ -29,7 +29,7 @@ CodexBridger is a macOS app. Fill in a provider address, an API key and a list o
 
 ## What's new in 1.3.0 - Auto-review model
 
-Not every third-party model can run Codex's auto-approval reviewer - the reviewer sub-agent needs a strict JSON-schema structured output, and some models (or proxies) refuse it. 1.3.0 turns this into a button:
+Not every third-party model can run Codex's auto-approval reviewer - the reviewer sub-agent needs a strict JSON-schema structured output, and some models (or proxies) refuse it. 1.3.0 turns this into a single click:
 
 - In the provider page's **Auto-review model** section, click **Run check**. The app sends one minimal Responses request per model and validates the answer the way Codex itself would.
 - When the scan finishes, a green note reports how many models passed. The drop-down only lists the passing models; you can type freely too, or fall back to a hand-typed slug.
@@ -46,7 +46,7 @@ For the reviewer to actually run, also flip **`approvals_reviewer` to `auto_revi
 
 
 
-Notes on the design: the verdict follows the order of a real Codex harness call (not a completed response, strip markdown fences, not JSON, not an object, wrong keys, bad decision value). Strict schema is sent on the `/responses` wire; if the provider has no Responses endpoint at all, the probe falls back to `/chat/completions` automatically. Results are cached inside this app's own configuration file (**never includes any credential**) and survive a restart; if the model list has changed since the last scan, a "results may be stale" hint appears.
+Notes on the design: the verdict follows the order of a real Codex harness call. Results are cached inside this app's own configuration file (**never includes any credential**) and survive a restart; if the model list has changed since the last scan, a "results may be stale" hint appears.
 
 ## Why CodexBridger?
 
@@ -54,7 +54,7 @@ Driving ChatGPT with a third-party model (DeepSeek, Kimi, GLM, OpenRouter, …) 
 
 CodexBridger turns that into "fill in a form, press one button": no field names to memorise, no manual backups, and it asks before it displaces whatever is in use.
 
-It does exactly one thing: **generate and maintain ChatGPT's configuration files**. No injection, no process hijacking, and ChatGPT does not need to be running.
+It does exactly one thing: **generate and maintain ChatGPT's configuration files**. No injection, no process hijacking. The app does not need to stay running either - close it once you are done configuring.
 
 ## The three files it writes
 

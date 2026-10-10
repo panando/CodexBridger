@@ -92,6 +92,12 @@ public struct ModelConfiguration: Codable, Identifiable, Equatable, Sendable {
     public var visibility: ModelVisibility
     /// Catalog priority, used to order the model picker.
     public var priority: Int
+    /// Catalog auto_review_model_override: the model slug the auto-review
+    /// sub-agent runs on. nil means the key is not written and Codex falls
+    /// back to reviewing with the active model itself. Only some models
+    /// accept the strict JSON schema the reviewer needs, so this is chosen
+    /// per provider, never per model.
+    public var autoReviewModelOverride: String?
 
     public init(
         id: UUID = UUID(),
@@ -103,7 +109,8 @@ public struct ModelConfiguration: Codable, Identifiable, Equatable, Sendable {
         supportedReasoningEfforts: [ReasoningEffort] = ReasoningEffort.all,
         defaultReasoningEffort: ReasoningEffort = .medium,
         visibility: ModelVisibility = .list,
-        priority: Int = 1
+        priority: Int = 1,
+        autoReviewModelOverride: String? = nil
     ) {
         self.id = id
         self.slug = slug
@@ -115,6 +122,7 @@ public struct ModelConfiguration: Codable, Identifiable, Equatable, Sendable {
         self.defaultReasoningEffort = defaultReasoningEffort
         self.visibility = visibility
         self.priority = priority
+        self.autoReviewModelOverride = autoReviewModelOverride
     }
 }
 
@@ -182,6 +190,11 @@ public struct ProviderConfiguration: Codable, Identifiable, Equatable, Sendable 
     /// supports_standalone_web_search
     public var supportsStandaloneWebSearch: Bool?
 
+    /// auto_review_model_override written into every catalog entry of this
+    /// provider. Stored on the provider, not per model: the reviewer model is
+    /// one choice for the whole provider. nil = do not write the key.
+    public var autoReviewModelOverride: String?
+
     public var models: [ModelConfiguration]
 
     public init(
@@ -203,6 +216,7 @@ public struct ProviderConfiguration: Codable, Identifiable, Equatable, Sendable 
         streamIdleTimeoutMs: Int? = nil,
         supportsWebsockets: Bool? = nil,
         supportsStandaloneWebSearch: Bool? = nil,
+        autoReviewModelOverride: String? = nil,
         models: [ModelConfiguration] = []
     ) {
         self.id = id
@@ -223,6 +237,7 @@ public struct ProviderConfiguration: Codable, Identifiable, Equatable, Sendable 
         self.streamIdleTimeoutMs = streamIdleTimeoutMs
         self.supportsWebsockets = supportsWebsockets
         self.supportsStandaloneWebSearch = supportsStandaloneWebSearch
+        self.autoReviewModelOverride = autoReviewModelOverride
         self.models = models
     }
 
@@ -294,6 +309,14 @@ public struct CodexBridgerConfiguration: Codable, Equatable, Sendable {
     /// Catalog entry used as the structural template when generating a catalog.
     public var catalogTemplateSlug: String
 
+    /// Last 一键检测 result per provider id. Credential-free by construction:
+    /// see AutoReviewScanCache.
+    public var autoReviewScans: [String: AutoReviewScanCache]
+
+    /// Per-model response_format.json_schema.strict values observed from the
+    /// harness. A model with no entry is probed with strict=true.
+    public var autoReviewStrictOverrides: AutoReviewStrictOverrides
+
     /// Re-read the written files after activating and report any mismatch.
     public var verifyAfterWrite: Bool
 
@@ -314,6 +337,8 @@ public struct CodexBridgerConfiguration: Codable, Equatable, Sendable {
         modelVerbosity: ModelVerbosity? = nil,
         modelSupportsReasoningSummaries: Bool? = nil,
         catalogTemplateSlug: String = "gpt-5.5",
+        autoReviewScans: [String: AutoReviewScanCache] = [:],
+        autoReviewStrictOverrides: AutoReviewStrictOverrides = .default,
         verifyAfterWrite: Bool = true,
         interfaceLanguage: InterfaceLanguage = .system
     ) {
@@ -327,6 +352,8 @@ public struct CodexBridgerConfiguration: Codable, Equatable, Sendable {
         self.modelVerbosity = modelVerbosity
         self.modelSupportsReasoningSummaries = modelSupportsReasoningSummaries
         self.catalogTemplateSlug = catalogTemplateSlug
+        self.autoReviewScans = autoReviewScans
+        self.autoReviewStrictOverrides = autoReviewStrictOverrides
         self.verifyAfterWrite = verifyAfterWrite
         self.interfaceLanguage = interfaceLanguage
     }

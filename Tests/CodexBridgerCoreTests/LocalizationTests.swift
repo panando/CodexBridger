@@ -13,6 +13,15 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(Localization.text("模型提供商", language: .english), "Providers")
     }
 
+    func testAutoReviewStringsAreTranslated() {
+        XCTAssertEqual(Localization.text("自动审批模型", language: .english), "Auto-review model")
+        XCTAssertEqual(Localization.text("一键检测", language: .english), "Run check")
+        XCTAssertEqual(
+            Localization.text("先在「模型配置」里添加模型，检测才有对象", language: .english),
+            "Add a model under Model configuration first"
+        )
+    }
+
     /// Partial coverage must degrade to readable Chinese, never to a bare key.
     func testAnUntranslatedStringFallsBackToItsSource() {
         let source = "这一句还没有翻译"

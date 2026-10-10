@@ -18,6 +18,7 @@ public struct ProviderFormBody: View {
         VStack(spacing: Metrics.sectionSpacing) {
             identitySection
             credentialSection
+            autoReviewSection
             mappingSection
         }
         .padding()
@@ -143,6 +144,12 @@ public struct ProviderFormBody: View {
                 )
             }
         }
+    }
+
+    // MARK: - 自动审批模型
+
+    private var autoReviewSection: some View {
+        AutoReviewSection(model: model, draft: $draft)
     }
 
     // MARK: - 模型映射

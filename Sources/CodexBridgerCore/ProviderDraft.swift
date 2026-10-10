@@ -325,6 +325,10 @@ enum ProviderValidator {
             .trimmingCharacters(in: .whitespacesAndNewlines), cwd.isEmpty {
             result.commandAuth.cwd = nil
         }
+        if let override = provider.autoReviewModelOverride?
+            .trimmingCharacters(in: .whitespacesAndNewlines) {
+            result.autoReviewModelOverride = override.isEmpty ? nil : override
+        }
         result.models = provider.models.map { model in
             var copy = model
             copy.slug = model.slug.trimmingCharacters(in: .whitespacesAndNewlines)

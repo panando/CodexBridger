@@ -130,6 +130,36 @@ final class ModelCatalogGeneratorTests: XCTestCase {
         XCTAssertThrowsError(try generator().makeCatalog(provider: zero, preferredTemplateSlug: "t"))
     }
 
+    func testAutoReviewOverrideIsWrittenToEveryEntryWhenSet() throws {
+        var provider = TestSupport.sampleProvider()
+        provider.autoReviewModelOverride = "demo-small"
+        let catalog = try generator().makeCatalog(provider: provider, preferredTemplateSlug: "t")
+        let models = try XCTUnwrap(catalog["models"] as? [[String: Any]])
+        XCTAssertEqual(models.count, 2)
+        for entry in models {
+            XCTAssertEqual(entry["auto_review_model_override"] as? String, "demo-small")
+        }
+    }
+
+    func testAutoReviewOverrideIsAbsentWhenUnset() throws {
+        let provider = TestSupport.sampleProvider()
+        let catalog = try generator().makeCatalog(provider: provider, preferredTemplateSlug: "t")
+        let models = try XCTUnwrap(catalog["models"] as? [[String: Any]])
+        for entry in models {
+            XCTAssertNil(entry["auto_review_model_override"])
+        }
+    }
+
+    func testAutoReviewOverrideTreatsBlankStringAsUnset() throws {
+        var provider = TestSupport.sampleProvider()
+        provider.autoReviewModelOverride = "   "
+        let catalog = try generator().makeCatalog(provider: provider, preferredTemplateSlug: "t")
+        let models = try XCTUnwrap(catalog["models"] as? [[String: Any]])
+        for entry in models {
+            XCTAssertNil(entry["auto_review_model_override"])
+        }
+    }
+
     func testSerializedCatalogIsStableAcrossRuns() throws {
         let provider = TestSupport.sampleProvider()
         let first = try ModelCatalogGenerator.serialize(

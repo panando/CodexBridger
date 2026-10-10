@@ -27,6 +27,20 @@ CodexBridger 是一个 macOS 配置管理软件。你在界面里填好「提供
   <a href="ScreenShot2.png"><img src="ScreenShot2.png" alt="CodexBridger 主界面：左侧是提供商列表，右侧是提供商信息、认证方式和模型配置" width="760"></a>
 </p>
 
+## 1.3.0 新增：自动审批模型
+
+使用第三方模型提供商时，不是所有模型都能跑 Codex 的自动审批复核——审查子代理需要严格的 JSON schema 结构化输出，部分模型（或代理）会拒绝。本软件 1.3.0 让这事变成按钮一下：
+
+- 在提供商页面的「**自动审批模型**」分区，点「一键检测」，软件会对该提供商配的每个模型发最小 Responses 请求，严格按 Codex 自己的判定来验。
+- 检测完成后，绿色提示「检测完成：N 个模型支持自动审批」。下拉里只列出通过检测的模型，可直接选、可手动改，可编辑框本身也随时能打字。
+- 选定的 slug 会被写进该提供商**每个**模型目录条目的 `auto_review_model_override`，对提供商所有模型统一生效。留空则不写、Codex 用当前模型自己跑审查。
+
+<p align="center">
+  <img src="docs/ui/after/auto-review-section.png" alt="自动审批模型：一键检测按钮、检测完成摩要、可编辑下拉选择审查模型" width="720">
+</p>
+
+设计要点：脚本逻辑来自一个真实 Codex harness 调用拟合出来的判定顺序（响应不是已完成的审查结果 → markdown 围栏剥离 → 不是 JSON → 不是对象 → 键不对 → 决策值非法）。严格 schema 在 `/responses` 端点上跑；如果提供商根本没有 Responses 端点，自动回退到 `/chat/completions`。检测结果缓存在本软件配置里（**不含任何凭据**），下次打开还在；模型列表如果变动了会标"可能过期"提醒重测。
+
 ## 为什么需要它？
 
 想用第三方模型（DeepSeek、Kimi、GLM、OpenRouter……）驱动 ChatGPT，就得手动改配置文件。而配置文件有三个，字段名和取值都有讲究，写错一个键就可能让 ChatGPT 起不来——改之前还得自己先备份。

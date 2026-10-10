@@ -27,6 +27,20 @@ CodexBridger is a macOS app. Fill in a provider address, an API key and a list o
   <a href="ScreenShot2.png"><img src="ScreenShot2.png" alt="CodexBridger main window: providers on the left, provider details, credentials and models on the right" width="760"></a>
 </p>
 
+## What's new in 1.3.0 - Auto-review model
+
+Not every third-party model can run Codex's auto-approval reviewer - the reviewer sub-agent needs a strict JSON-schema structured output, and some models (or proxies) refuse it. 1.3.0 turns this into a button:
+
+- In the provider page's **Auto-review model** section, click **Run check**. The app sends one minimal Responses request per model and validates the answer the way Codex itself would.
+- When the scan finishes, a green note reports how many models passed. The drop-down only lists the passing models; you can type freely too, or fall back to a hand-typed slug.
+- The chosen slug is written into the `auto_review_model_override` field of **every** catalog entry under the provider. Codex then uses it as the reviewer model for all of them. Leave it blank to skip the field entirely - Codex falls back to using the active model itself.
+
+<p align="center">
+  <img src="docs/ui/after/auto-review-section.png" alt="Auto-review model: one-click check, completion summary, and an editable combo for the reviewer" width="720">
+</p>
+
+Notes on the design: the verdict follows the order of a real Codex harness call (not a completed response, strip markdown fences, not JSON, not an object, wrong keys, bad decision value). Strict schema is sent on the `/responses` wire; if the provider has no Responses endpoint at all, the probe falls back to `/chat/completions` automatically. Results are cached inside this app's own configuration file (**never includes any credential**) and survive a restart; if the model list has changed since the last scan, a "results may be stale" hint appears.
+
 ## Why CodexBridger?
 
 Driving ChatGPT with a third-party model (DeepSeek, Kimi, GLM, OpenRouter, …) means editing configuration files by hand. There are three of them, the field names and accepted values matter, and one wrong key can stop ChatGPT from starting — and you are expected to remember to back things up first.

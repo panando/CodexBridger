@@ -141,6 +141,39 @@ final class CodexConfigWriterTests: XCTestCase {
         XCTAssertEqual(CodexConfigWriter.wireAPIValue, "responses")
     }
 
+    // MARK: - Auto-review override in the catalog
+
+    func testActivationWritesAutoReviewOverrideIntoEveryCatalogEntry() throws {
+        let (paths, root) = try TestSupport.makeTemporaryCodexHome()
+        defer { TestSupport.remove(root) }
+        var provider = TestSupport.sampleProvider(id: "cpa")
+        provider.autoReviewModelOverride = "kimi-k2.7-code"
+        let result = try makeWriter(paths).activate(
+            provider: provider, model: provider.models[0], configuration: CodexBridgerConfiguration()
+        )
+        let catalog = try TestSupport.json(result.catalogURL)
+        let entries = try XCTUnwrap(catalog["models"] as? [[String: Any]])
+        XCTAssertEqual(entries.count, 2)
+        for entry in entries {
+            XCTAssertEqual(entry["auto_review_model_override"] as? String, "kimi-k2.7-code")
+        }
+    }
+
+    func testActivationOmitsAutoReviewOverrideWhenUnset() throws {
+        let (paths, root) = try TestSupport.makeTemporaryCodexHome()
+        defer { TestSupport.remove(root) }
+        let provider = TestSupport.sampleProvider(id: "cpa")
+        let result = try makeWriter(paths).activate(
+            provider: provider, model: provider.models[0], configuration: CodexBridgerConfiguration()
+        )
+        let catalog = try TestSupport.json(result.catalogURL)
+        let entries = try XCTUnwrap(catalog["models"] as? [[String: Any]])
+        for entry in entries {
+            XCTAssertNil(entry["auto_review_model_override"])
+        }
+        XCTAssertFalse(result.catalogJSON.contains("auto_review_model_override"))
+    }
+
     // MARK: - Backups
 
     func testBackupsAreTakenBeforeWritingAndHoldTheOriginalContent() throws {

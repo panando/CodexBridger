@@ -84,6 +84,13 @@ public final class AppModel: ObservableObject {
     /// Set when a delete is waiting for the user to agree to it; see `PendingDeletion`.
     @Published public var pendingDeletion: PendingDeletion?
     @Published public var templateSourceDescription: String = "内置模板（已用 ChatGPT 校验）"
+    /// 一键检测 lifecycle for the 自动审批模型 section.
+    @Published public var autoReviewState = AutoReviewScanState()
+    /// Builds the prober for one scan run. Production uses the shared session;
+    /// tests substitute a stubbed transport so no test touches the network.
+    public var autoReviewProberFactory: () -> AutoReviewProbe = {
+        AutoReviewProbe(session: .shared, maxConcurrent: 3, timeout: 60)
+    }
 
     /// Bumped on every activation message, so a pending auto-dismiss cannot clear a newer one.
     private var activationNoticeToken = 0

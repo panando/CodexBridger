@@ -79,6 +79,7 @@ extension ProviderConfiguration {
         case queryParams, httpHeaders, environmentHTTPHeaders
         case requestMaxRetries, streamMaxRetries, streamIdleTimeoutMs
         case supportsWebsockets, supportsStandaloneWebSearch, models
+        case autoReviewModelOverride
     }
 
     public init(from decoder: Decoder) throws {
@@ -105,6 +106,9 @@ extension ProviderConfiguration {
         self.supportsStandaloneWebSearch = container.lenientOptional(
             .supportsStandaloneWebSearch
         )
+        // Absent in configs written before the field existed: the key is simply
+        // not written into any catalog entry until the user picks a reviewer.
+        self.autoReviewModelOverride = container.lenientOptional(.autoReviewModelOverride)
         if container.contains(.models) {
             self.models = try container.decode([ModelConfiguration].self, forKey: .models)
         } else {
@@ -119,7 +123,8 @@ extension CodexBridgerConfiguration {
     enum CodingKeys: String, CodingKey {
         case schemaVersion, providers, activeProviderID, activeModelSlug, publishedProvider
         case modelReasoningEffort, modelReasoningSummary, modelVerbosity
-        case modelSupportsReasoningSummaries, catalogTemplateSlug, verifyAfterWrite
+        case modelSupportsReasoningSummaries, catalogTemplateSlug
+        case autoReviewScans, autoReviewStrictOverrides, verifyAfterWrite
         case interfaceLanguage
     }
 
@@ -148,6 +153,14 @@ extension CodexBridgerConfiguration {
             .modelSupportsReasoningSummaries
         )
         self.catalogTemplateSlug = container.lenient(.catalogTemplateSlug, default: "gpt-5.5")
+        // Absent until the user runs a first 一键检测; an empty map means every
+        // provider shows the manual-entry-only path.
+        self.autoReviewScans = container.lenient(.autoReviewScans, default: [:])
+        // Absent until the harness's per-model strict values are recorded;
+        // the observed defaults are the safe starting point.
+        self.autoReviewStrictOverrides = container.lenient(
+            .autoReviewStrictOverrides, default: .default
+        )
         self.verifyAfterWrite = container.lenient(.verifyAfterWrite, default: true)
         // Absent in configs written before the setting existed; `system` is the safe default.
         self.interfaceLanguage = container.lenient(

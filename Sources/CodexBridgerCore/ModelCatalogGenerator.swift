@@ -70,8 +70,15 @@ public struct ModelCatalogGenerator {
         // The template slug is only structural; it must never leak into output.
         template["slug"] = provider.models[0].slug
 
+        let autoReviewOverride = provider.autoReviewModelOverride?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         let entries = try provider.models.enumerated().map { index, model in
-            try makeEntry(model: model, template: template, priority: index)
+            try makeEntry(
+                model: model,
+                template: template,
+                priority: index,
+                autoReviewOverride: autoReviewOverride
+            )
         }
         return ["models": entries]
     }
@@ -86,8 +93,11 @@ public struct ModelCatalogGenerator {
     public func makeEntry(
         model: ModelConfiguration,
         template: [String: Any],
-        priority: Int
+        priority: Int,
+        autoReviewOverride: String? = nil
     ) throws -> [String: Any] {
+        let trimmedOverride = autoReviewOverride?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         var entry = template
         let contextWindow = max(model.contextWindow, 1)
         let maxContextWindow = max(model.maxContextWindow, contextWindow)
@@ -109,6 +119,11 @@ public struct ModelCatalogGenerator {
         }
         entry["visibility"] = model.visibility.rawValue
         entry["priority"] = 1000 + priority
+        // Written only when set: an absent key is legal and means "review with
+        // this model itself"; an empty string would not be.
+        if let trimmedOverride, !trimmedOverride.isEmpty {
+            entry["auto_review_model_override"] = trimmedOverride
+        }
         return entry
     }
 

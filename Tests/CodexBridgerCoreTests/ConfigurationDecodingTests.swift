@@ -123,4 +123,25 @@ final class ConfigurationDecodingTests: XCTestCase {
         XCTAssertThrowsError(try decode("{ this is not json"))
         XCTAssertThrowsError(try decode("{\"providers\": \"not-an-array\"}"))
     }
+    /// The strict-override table is part of the app's own configuration and
+    /// must survive a round trip; a config written before it existed decodes
+    /// to the observed defaults rather than failing.
+    func testStrictOverridesDecodeToTheObservedDefaultsWhenAbsent() throws {
+        let json = #"{"providers": []}"#
+        let config = try JSONDecoder().decode(
+            CodexBridgerConfiguration.self, from: Data(json.utf8)
+        )
+        XCTAssertFalse(config.autoReviewStrictOverrides.value(for: "glm-5.3-flash"))
+        XCTAssertTrue(config.autoReviewStrictOverrides.value(for: "kimi-k2.7-code"))
+    }
+
+    func testStrictOverridesSurviveARoundTrip() throws {
+        var config = CodexBridgerConfiguration()
+        config.autoReviewStrictOverrides.set(false, for: "mimo-v2.6-flash")
+        let data = try JSONEncoder().encode(config)
+        let decoded = try JSONDecoder().decode(CodexBridgerConfiguration.self, from: data)
+        XCTAssertFalse(decoded.autoReviewStrictOverrides.value(for: "mimo-v2.6-flash"))
+        XCTAssertFalse(decoded.autoReviewStrictOverrides.value(for: "glm-5.3-flash"))
+    }
+
 }

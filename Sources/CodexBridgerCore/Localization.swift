@@ -70,6 +70,25 @@ public enum Localization {
 
     /// English strings, keyed by the Chinese source.
     public static let english: [String: String] = [
+        // Auto-review model section
+        "自动审批模型": "Auto-review model",
+        "审查模型": "Reviewer model",
+        "一键检测": "Run check",
+        "手动输入": "Enter manually",
+        "开始检测": "Start check",
+        "支持": "Supported",
+        "不支持": "Not supported",
+        "Key 无效": "Invalid key",
+        "服务端错误": "Server error",
+        "超时": "Timed out",
+        "连不上": "Unreachable",
+        "不设置（用当前模型自己审）": "Not set (review with the model itself)",
+        "先在「模型配置」里添加模型，检测才有对象": "Add a model under Model configuration first",
+        "先填写 API Key，检测才能带上凭据": "Enter an API key so the check can authenticate",
+        "这个认证方式每次检测需要输入一次性 Key（不会保存）": "This mode needs a one-time key per check (never saved)",
+        "输入一次性 API Key": "Enter a one-time API key",
+        "检测中": "Checking",
+
         // Window and navigation
         "模型提供商": "Providers",
         "新建提供商": "New provider",

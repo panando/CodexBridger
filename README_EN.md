@@ -38,6 +38,13 @@ Not every third-party model can run Codex's auto-approval reviewer - the reviewe
 <p align="center">
   <img src="auto-review-section.png" alt="Auto-review model: one-click check, completion summary, and an editable combo for the reviewer" width="720">
 </p>
+For the reviewer to actually run, also flip **`approvals_reviewer` to `auto_review`** on the **Global settings** page - otherwise the prompts go to you, not to a sub-agent.
+
+<p align="center">
+  <img src="ScreenShot3.png" alt="Global settings: enable auto-approval review" width="720">
+</p>
+
+
 
 Notes on the design: the verdict follows the order of a real Codex harness call (not a completed response, strip markdown fences, not JSON, not an object, wrong keys, bad decision value). Strict schema is sent on the `/responses` wire; if the provider has no Responses endpoint at all, the probe falls back to `/chat/completions` automatically. Results are cached inside this app's own configuration file (**never includes any credential**) and survive a restart; if the model list has changed since the last scan, a "results may be stale" hint appears.
 

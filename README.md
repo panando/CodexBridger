@@ -38,6 +38,13 @@ CodexBridger 是一个 macOS 配置管理软件。你在界面里填好「提供
 <p align="center">
   <img src="auto-review-section.png" alt="自动审批模型：一键检测按钮、检测完成摩要、可编辑下拉选择审查模型" width="720">
 </p>
+上面这一步要真正起作用，还要在「**全局配置**」页面把 `approvals_reviewer` 改为 `auto_review`：否则起动起来是你自己调 Codex不是子代理。
+
+<p align="center">
+  <img src="ScreenShot3.png" alt="全局配置：启动自动审批复核" width="720">
+</p>
+
+
 
 设计要点：脚本逻辑来自一个真实 Codex harness 调用拟合出来的判定顺序（响应不是已完成的审查结果 → markdown 围栏剥离 → 不是 JSON → 不是对象 → 键不对 → 决策值非法）。严格 schema 在 `/responses` 端点上跑；如果提供商根本没有 Responses 端点，自动回退到 `/chat/completions`。检测结果缓存在本软件配置里（**不含任何凭据**），下次打开还在；模型列表如果变动了会标"可能过期"提醒重测。
 
